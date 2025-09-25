@@ -13,6 +13,7 @@ winit = "0.30"
 bytemuck = { version = "1.0", features = ["derive"] }
 pollster = "0.3"
 anyhow = "1.0"
+tokio = { version = "1.0", features = ["full"] }
 
 [dev-dependencies]
 approx = "0.5"

@@ -55,10 +55,15 @@ fn hsv_to_rgb(hsv: vec3<f32>) -> vec3<f32> {
     return ((rgb - 1.0) * hsv.y + 1.0) * hsv.z;
 }
 
+fn noise(p: vec2<f32>) -> f32 {
+    return fract(sin(dot(p, vec2<f32>(12.9898, 78.233))) * 43758.5453);
+}
+
 @fragment
 fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
     let uv = in.tex_coords * 2.0 - 1.0;
     let distance_from_center = length(uv);
+    let angle = atan2(uv.y, uv.x);
 
     let frequency_bands = vec3<f32>(
         params.bass_response,
@@ -68,20 +73,42 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
 
     let time_scaled = time * params.time_factor;
 
-    let wave1 = sin(distance_from_center * 8.0 * params.frequency_scale + time_scaled) * frequency_bands.x;
-    let wave2 = sin(distance_from_center * 16.0 * params.frequency_scale + time_scaled * 1.5) * frequency_bands.y;
-    let wave3 = sin(distance_from_center * 32.0 * params.frequency_scale + time_scaled * 2.0) * frequency_bands.z;
+    // Enhanced wave patterns with radial distortion
+    let radial_freq = distance_from_center * 12.0 * params.frequency_scale;
+    let angular_freq = angle * 4.0 + time_scaled * 0.5;
 
-    let combined_wave = (wave1 + wave2 + wave3) * 0.33;
+    let bass_wave = sin(radial_freq + time_scaled) * frequency_bands.x * 0.8;
+    let mid_wave = sin(radial_freq * 2.0 + angular_freq + time_scaled * 1.3) * frequency_bands.y * 0.6;
+    let treble_wave = sin(radial_freq * 4.0 + angular_freq * 2.0 + time_scaled * 2.1) * frequency_bands.z * 0.4;
 
-    let hue = (combined_wave + params.spectral_shift + time_scaled * 0.1) % 1.0;
-    let saturation = params.color_intensity * 0.8 + 0.2;
-    let brightness = params.overall_brightness * (0.5 + combined_wave * 0.5);
+    // Add noise texture for high-frequency detail
+    let noise_coord = uv * 20.0 + vec2<f32>(time_scaled * 0.1);
+    let noise_val = noise(noise_coord) * frequency_bands.z * 0.1;
 
-    let color = hsv_to_rgb(vec3<f32>(hue, saturation, brightness));
+    let combined_wave = bass_wave + mid_wave + treble_wave + noise_val;
 
-    let fade = 1.0 - smoothstep(0.8, 1.2, distance_from_center);
+    // Dynamic color cycling based on audio
+    let hue_base = (angle / 6.28318) + params.spectral_shift + time_scaled * 0.05;
+    let hue_modulation = combined_wave * 0.3;
+    let final_hue = fract(hue_base + hue_modulation);
 
-    return vec4<f32>(color * fade, 1.0);
+    // Enhanced saturation and brightness
+    let saturation = params.color_intensity * (0.7 + frequency_bands.y * 0.3);
+    let brightness_base = params.overall_brightness;
+    let brightness_wave = (0.6 + combined_wave * 0.4);
+    let final_brightness = brightness_base * brightness_wave;
+
+    let color = hsv_to_rgb(vec3<f32>(final_hue, saturation, final_brightness));
+
+    // Improved radial fade with bass response
+    let bass_boost = 1.0 + frequency_bands.x * 0.3;
+    let fade_distance = 0.9 * bass_boost;
+    let fade = 1.0 - smoothstep(fade_distance, fade_distance + 0.3, distance_from_center);
+
+    // Add center glow effect
+    let center_glow = exp(-distance_from_center * 2.0) * params.overall_brightness * 0.3;
+    let final_color = color * fade + vec3<f32>(center_glow);
+
+    return vec4<f32>(final_color, 1.0);
 }
 "#;
