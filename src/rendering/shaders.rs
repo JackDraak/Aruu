@@ -26,7 +26,7 @@ struct FragmentInput {
     @location(1) world_position: vec3<f32>,
 }
 
-struct ShaderParams {
+struct UniformData {
     color_intensity: f32,
     frequency_scale: f32,
     time_factor: f32,
@@ -35,13 +35,14 @@ struct ShaderParams {
     treble_response: f32,
     overall_brightness: f32,
     spectral_shift: f32,
+    time: f32,
+    _padding0: f32,
+    _padding1: f32,
+    _padding2: f32,
 }
 
 @group(0) @binding(0)
-var<uniform> params: ShaderParams;
-
-@group(0) @binding(1)
-var<uniform> time: f32;
+var<uniform> uniforms: UniformData;
 
 fn hue_to_rgb(h: f32) -> vec3<f32> {
     let c = vec3<f32>(abs(h * 6.0 - 3.0) - 1.0,
@@ -66,15 +67,15 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
     let angle = atan2(uv.y, uv.x);
 
     let frequency_bands = vec3<f32>(
-        params.bass_response,
-        params.mid_response,
-        params.treble_response
+        uniforms.bass_response,
+        uniforms.mid_response,
+        uniforms.treble_response
     );
 
-    let time_scaled = time * params.time_factor;
+    let time_scaled = uniforms.time * uniforms.time_factor;
 
     // Enhanced wave patterns with radial distortion
-    let radial_freq = distance_from_center * 12.0 * params.frequency_scale;
+    let radial_freq = distance_from_center * 12.0 * uniforms.frequency_scale;
     let angular_freq = angle * 4.0 + time_scaled * 0.5;
 
     let bass_wave = sin(radial_freq + time_scaled) * frequency_bands.x * 0.8;
@@ -88,13 +89,13 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
     let combined_wave = bass_wave + mid_wave + treble_wave + noise_val;
 
     // Dynamic color cycling based on audio
-    let hue_base = (angle / 6.28318) + params.spectral_shift + time_scaled * 0.05;
+    let hue_base = (angle / 6.28318) + uniforms.spectral_shift + time_scaled * 0.05;
     let hue_modulation = combined_wave * 0.3;
     let final_hue = fract(hue_base + hue_modulation);
 
     // Enhanced saturation and brightness
-    let saturation = params.color_intensity * (0.7 + frequency_bands.y * 0.3);
-    let brightness_base = params.overall_brightness;
+    let saturation = uniforms.color_intensity * (0.7 + frequency_bands.y * 0.3);
+    let brightness_base = uniforms.overall_brightness;
     let brightness_wave = (0.6 + combined_wave * 0.4);
     let final_brightness = brightness_base * brightness_wave;
 
@@ -106,7 +107,7 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
     let fade = 1.0 - smoothstep(fade_distance, fade_distance + 0.3, distance_from_center);
 
     // Add center glow effect
-    let center_glow = exp(-distance_from_center * 2.0) * params.overall_brightness * 0.3;
+    let center_glow = exp(-distance_from_center * 2.0) * uniforms.overall_brightness * 0.3;
     let final_color = color * fade + vec3<f32>(center_glow);
 
     return vec4<f32>(final_color, 1.0);

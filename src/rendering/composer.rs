@@ -26,7 +26,14 @@ impl Vertex {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 struct UniformData {
-    params: [f32; 8],
+    color_intensity: f32,
+    frequency_scale: f32,
+    time_factor: f32,
+    bass_response: f32,
+    mid_response: f32,
+    treble_response: f32,
+    overall_brightness: f32,
+    spectral_shift: f32,
     time: f32,
     _padding: [f32; 3],
 }
@@ -146,7 +153,14 @@ impl FrameComposer {
             });
 
         let uniform_data = UniformData {
-            params: [0.0; 8],
+            color_intensity: 1.0,
+            frequency_scale: 1.0,
+            time_factor: 1.0,
+            bass_response: 0.0,
+            mid_response: 0.0,
+            treble_response: 0.0,
+            overall_brightness: 1.0,
+            spectral_shift: 0.0,
             time: 0.0,
             _padding: [0.0; 3],
         };
@@ -190,7 +204,14 @@ impl FrameComposer {
 
         let time = self.start_time.elapsed().as_secs_f32();
         let uniform_data = UniformData {
-            params: parameters.as_array(),
+            color_intensity: parameters.color_intensity,
+            frequency_scale: parameters.frequency_scale,
+            time_factor: parameters.time_factor,
+            bass_response: parameters.bass_response,
+            mid_response: parameters.mid_response,
+            treble_response: parameters.treble_response,
+            overall_brightness: parameters.overall_brightness,
+            spectral_shift: parameters.spectral_shift,
             time,
             _padding: [0.0; 3],
         };
