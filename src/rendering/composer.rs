@@ -34,8 +34,16 @@ struct UniformData {
     treble_response: f32,
     overall_brightness: f32,
     spectral_shift: f32,
+    saturation: f32,
+    palette_index: f32,
+    palette_base_hue: f32,
+    palette_hue_range: f32,
+    transition_blend: f32,
+    prev_palette_index: f32,
+    prev_palette_base_hue: f32,
+    prev_palette_hue_range: f32,
     time: f32,
-    _padding: [f32; 3],
+    _padding: f32,
 }
 
 const VERTICES: &[Vertex] = &[
@@ -161,8 +169,16 @@ impl FrameComposer {
             treble_response: 0.0,
             overall_brightness: 1.0,
             spectral_shift: 0.0,
+            saturation: 1.0,
+            palette_index: 0.0,
+            palette_base_hue: 0.0,
+            palette_hue_range: 1.0,
+            transition_blend: 1.0,
+            prev_palette_index: 0.0,
+            prev_palette_base_hue: 0.0,
+            prev_palette_hue_range: 1.0,
             time: 0.0,
-            _padding: [0.0; 3],
+            _padding: 0.0,
         };
 
         let uniform_buffer = context
@@ -212,8 +228,16 @@ impl FrameComposer {
             treble_response: parameters.treble_response,
             overall_brightness: parameters.overall_brightness,
             spectral_shift: parameters.spectral_shift,
+            saturation: parameters.saturation,
+            palette_index: parameters.palette_index,
+            palette_base_hue: parameters.palette_base_hue,
+            palette_hue_range: parameters.palette_hue_range,
+            transition_blend: parameters.transition_blend,
+            prev_palette_index: parameters.prev_palette_index,
+            prev_palette_base_hue: parameters.prev_palette_base_hue,
+            prev_palette_hue_range: parameters.prev_palette_hue_range,
             time,
-            _padding: [0.0; 3],
+            _padding: 0.0,
         };
 
         context.queue.write_buffer(

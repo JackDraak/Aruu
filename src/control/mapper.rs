@@ -1,8 +1,10 @@
-use super::{ShaderParameters, Smoother, SmoothingType, Smoothable};
-use crate::audio::AudioFeatures;
+use super::{ShaderParameters, Smoother, SmoothingType, Smoothable, PaletteManager};
+use crate::audio::{AudioFeatures, RhythmFeatures};
 
 pub struct FeatureMapper {
     smoother: Smoother,
+    palette_manager: PaletteManager,
+    frame_time: f32,
 }
 
 impl FeatureMapper {
@@ -19,14 +21,20 @@ impl FeatureMapper {
             ("treble_response", SmoothingType::adaptive(0.05, 0.5, 5.0)), // Very responsive for treble
             ("overall_brightness", SmoothingType::exponential(3.0)),
             ("spectral_shift", SmoothingType::exponential(1.5)),
+            ("saturation", SmoothingType::exponential(4.0)), // Fast response for volume changes
         ]);
 
         Self {
             smoother,
+            palette_manager: PaletteManager::new(),
+            frame_time: 0.0,
         }
     }
 
     pub fn map_features_to_parameters(&mut self, features: &AudioFeatures) -> ShaderParameters {
+        // Update frame time for palette management
+        self.frame_time += 1.0 / 60.0; // Assuming 60 FPS
+
         let mut params = ShaderParameters::new();
 
         params.bass_response = features.bass.clamp(0.0, 1.0);
@@ -45,10 +53,102 @@ impl FeatureMapper {
 
         params.time_factor = 1.0 + features.overall_volume * 0.5;
 
+        // Calculate saturation based on signal level in dB
+        // Near silence (-60dB) = 0.0 saturation, -6dB = 1.0 saturation
+        params.saturation = Self::calculate_saturation_from_db(features.signal_level_db);
+
+        // Update transitions
+        self.palette_manager.update_transition(self.frame_time);
+
+        // Set current and previous palette information for transition
+        let current_palette = self.palette_manager.current_palette();
+        let previous_palette = self.palette_manager.previous_palette();
+        let transition_blend = self.palette_manager.get_transition_blend(self.frame_time);
+
+        params.palette_index = current_palette.as_index();
+        params.palette_base_hue = current_palette.base_hue();
+        params.palette_hue_range = current_palette.hue_range();
+        params.transition_blend = transition_blend;
+        params.prev_palette_index = previous_palette.as_index();
+        params.prev_palette_base_hue = previous_palette.base_hue();
+        params.prev_palette_hue_range = previous_palette.hue_range();
+
         // Apply advanced smoothing
         params.apply_smoothing(&mut self.smoother);
 
         params
+    }
+
+    pub fn map_features_with_rhythm(&mut self, features: &AudioFeatures, rhythm: &RhythmFeatures) -> ShaderParameters {
+        // Update frame time for palette management
+        self.frame_time += 1.0 / 60.0; // Assuming 60 FPS
+
+        let mut params = ShaderParameters::new();
+
+        params.bass_response = features.bass.clamp(0.0, 1.0);
+        params.mid_response = features.mid.clamp(0.0, 1.0);
+        params.treble_response = features.treble.clamp(0.0, 1.0);
+
+        params.overall_brightness = features.overall_volume.clamp(0.0, 1.0);
+
+        params.color_intensity = (features.bass * 0.4 + features.mid * 0.4 + features.treble * 0.2).clamp(0.0, 1.0);
+
+        params.frequency_scale = 1.0 + features.spectral_centroid / 10000.0;
+        params.frequency_scale = params.frequency_scale.clamp(0.5, 2.0);
+
+        params.spectral_shift = (features.spectral_rolloff / 22050.0 - 0.5) * 2.0;
+        params.spectral_shift = params.spectral_shift.clamp(-1.0, 1.0);
+
+        params.time_factor = 1.0 + features.overall_volume * 0.5;
+
+        // Calculate saturation based on signal level in dB
+        params.saturation = Self::calculate_saturation_from_db(features.signal_level_db);
+
+        // Try to switch palette on downbeat detection
+        self.palette_manager.try_switch_palette(self.frame_time, rhythm.downbeat_detected);
+
+        // Update transitions
+        self.palette_manager.update_transition(self.frame_time);
+
+        // Set current and previous palette information for transition
+        let current_palette = self.palette_manager.current_palette();
+        let previous_palette = self.palette_manager.previous_palette();
+        let transition_blend = self.palette_manager.get_transition_blend(self.frame_time);
+
+        params.palette_index = current_palette.as_index();
+        params.palette_base_hue = current_palette.base_hue();
+        params.palette_hue_range = current_palette.hue_range();
+        params.transition_blend = transition_blend;
+        params.prev_palette_index = previous_palette.as_index();
+        params.prev_palette_base_hue = previous_palette.base_hue();
+        params.prev_palette_hue_range = previous_palette.hue_range();
+
+        // Apply advanced smoothing (palette parameters excluded to prevent visual artifacts)
+        params.apply_smoothing(&mut self.smoother);
+
+        params
+    }
+
+    fn calculate_saturation_from_db(signal_db: f32) -> f32 {
+        // Map dB range: -60dB (silence) -> 0.0 saturation, -6dB (peak) -> 1.0 saturation
+        // Use exponential curve for more dramatic low-volume desaturation
+        let normalized = (signal_db + 60.0) / 54.0; // Convert -60dB to 0, -6dB to 1
+        let clamped = normalized.clamp(0.0, 1.0);
+
+        // Apply exponential curve: more gradual at low volumes, steeper at high volumes
+        let exponential_curve = clamped * clamped; // Square for exponential effect
+
+        // Ensure complete desaturation below -50dB
+        if signal_db < -50.0 {
+            0.0
+        } else if signal_db < -30.0 {
+            // Gradual ramp from -50dB to -30dB
+            let ramp = (signal_db + 50.0) / 20.0; // -50dB = 0, -30dB = 1
+            (ramp * ramp).clamp(0.0, 1.0) * 0.3 // Max 30% saturation until -30dB
+        } else {
+            // Full saturation curve from -30dB to -6dB
+            exponential_curve
+        }
     }
 
     pub fn configure_smoothing(&mut self, param_name: &str, smoothing_type: SmoothingType) {
@@ -88,6 +188,8 @@ mod tests {
             mid: 0.3,
             treble: 0.2,
             overall_volume: 0.4,
+            signal_level_db: -12.0,  // Moderate level
+            peak_level_db: -6.0,     // Peak level
             spectral_centroid: 2000.0,
             spectral_rolloff: 8000.0,
             zero_crossing_rate: 0.1,
@@ -118,6 +220,8 @@ mod tests {
             mid: 1.0,
             treble: 1.0,
             overall_volume: 1.0,
+            signal_level_db: -6.0,
+            peak_level_db: -3.0,
             spectral_centroid: 1000.0,
             spectral_rolloff: 5000.0,
             zero_crossing_rate: 0.1,
@@ -130,6 +234,8 @@ mod tests {
             mid: 0.0,
             treble: 0.0,
             overall_volume: 0.0,
+            signal_level_db: -40.0,  // Quiet
+            peak_level_db: -30.0,
             spectral_centroid: 2000.0,
             spectral_rolloff: 10000.0,
             zero_crossing_rate: 0.2,

@@ -4,6 +4,8 @@ pub struct AudioFeatures {
     pub mid: f32,
     pub treble: f32,
     pub overall_volume: f32,
+    pub signal_level_db: f32,     // Signal level in dB
+    pub peak_level_db: f32,       // Peak level in dB
     pub spectral_centroid: f32,
     pub spectral_rolloff: f32,
     pub zero_crossing_rate: f32,
@@ -16,6 +18,8 @@ impl AudioFeatures {
             mid: 0.0,
             treble: 0.0,
             overall_volume: 0.0,
+            signal_level_db: -60.0,  // Very quiet default
+            peak_level_db: -60.0,
             spectral_centroid: 0.0,
             spectral_rolloff: 0.0,
             zero_crossing_rate: 0.0,
@@ -37,6 +41,21 @@ impl AudioFeatures {
 
         let overall_volume = bins.iter().sum::<f32>() / total_bins as f32;
 
+        // Calculate signal levels in dB
+        let rms = (bins.iter().map(|x| x * x).sum::<f32>() / total_bins as f32).sqrt();
+        let signal_level_db = if rms > 0.0 {
+            20.0 * rms.log10()
+        } else {
+            -60.0 // Very quiet
+        };
+
+        let peak = bins.iter().fold(0.0f32, |acc, &x| acc.max(x.abs()));
+        let peak_level_db = if peak > 0.0 {
+            20.0 * peak.log10()
+        } else {
+            -60.0
+        };
+
         let spectral_centroid = Self::calculate_spectral_centroid(bins, sample_rate);
         let spectral_rolloff = Self::calculate_spectral_rolloff(bins, sample_rate);
 
@@ -45,6 +64,8 @@ impl AudioFeatures {
             mid,
             treble,
             overall_volume,
+            signal_level_db,
+            peak_level_db,
             spectral_centroid,
             spectral_rolloff,
             zero_crossing_rate: 0.0,

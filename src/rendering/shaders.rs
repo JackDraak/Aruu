@@ -35,10 +35,16 @@ struct UniformData {
     treble_response: f32,
     overall_brightness: f32,
     spectral_shift: f32,
+    saturation: f32,
+    palette_index: f32,
+    palette_base_hue: f32,
+    palette_hue_range: f32,
+    transition_blend: f32,
+    prev_palette_index: f32,
+    prev_palette_base_hue: f32,
+    prev_palette_hue_range: f32,
     time: f32,
-    _padding0: f32,
-    _padding1: f32,
-    _padding2: f32,
+    _padding: f32,
 }
 
 @group(0) @binding(0)
@@ -88,18 +94,45 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
 
     let combined_wave = bass_wave + mid_wave + treble_wave + noise_val;
 
-    // Dynamic color cycling based on audio
-    let hue_base = (angle / 6.28318) + uniforms.spectral_shift + time_scaled * 0.05;
-    let hue_modulation = combined_wave * 0.3;
-    let final_hue = fract(hue_base + hue_modulation);
+    // Cross-fade palette-based color generation
+    var current_hue: f32;
+    var current_saturation: f32;
+    var prev_hue: f32;
+    var prev_saturation: f32;
 
-    // Enhanced saturation and brightness
-    let saturation = uniforms.color_intensity * (0.7 + frequency_bands.y * 0.3);
+    // Calculate current palette color
+    if uniforms.palette_index < 0.5 {
+        // Rainbow palette (index 0)
+        current_hue = fract((angle / 6.28318) + uniforms.spectral_shift + time_scaled * 0.05 + combined_wave * 0.3);
+        current_saturation = uniforms.saturation * uniforms.color_intensity * (0.8 + frequency_bands.y * 0.2);
+    } else {
+        // Hue-based palettes (index 1-7)
+        let hue_variation = combined_wave * uniforms.palette_hue_range * 0.5;
+        current_hue = fract(uniforms.palette_base_hue + hue_variation + uniforms.spectral_shift * 0.1);
+        current_saturation = uniforms.saturation * uniforms.color_intensity * 0.9;
+    }
+
+    // Calculate previous palette color
+    if uniforms.prev_palette_index < 0.5 {
+        // Rainbow palette (index 0)
+        prev_hue = fract((angle / 6.28318) + uniforms.spectral_shift + time_scaled * 0.05 + combined_wave * 0.3);
+        prev_saturation = uniforms.saturation * uniforms.color_intensity * (0.8 + frequency_bands.y * 0.2);
+    } else {
+        // Hue-based palettes (index 1-7)
+        let prev_hue_variation = combined_wave * uniforms.prev_palette_hue_range * 0.5;
+        prev_hue = fract(uniforms.prev_palette_base_hue + prev_hue_variation + uniforms.spectral_shift * 0.1);
+        prev_saturation = uniforms.saturation * uniforms.color_intensity * 0.9;
+    }
+
+    // Blend between previous and current palettes
+    let final_hue = mix(prev_hue, current_hue, uniforms.transition_blend);
+    let final_saturation = mix(prev_saturation, current_saturation, uniforms.transition_blend);
+
     let brightness_base = uniforms.overall_brightness;
     let brightness_wave = (0.6 + combined_wave * 0.4);
     let final_brightness = brightness_base * brightness_wave;
 
-    let color = hsv_to_rgb(vec3<f32>(final_hue, saturation, final_brightness));
+    let color = hsv_to_rgb(vec3<f32>(final_hue, final_saturation, final_brightness));
 
     // Improved radial fade with bass response
     let bass_boost = 1.0 + frequency_bands.x * 0.3;

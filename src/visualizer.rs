@@ -104,30 +104,11 @@ impl AudioVisualizer {
 
         let rhythm_features = self.rhythm_detector.process_frame(&frequency_bins);
 
-        let mut enhanced_parameters = self.feature_mapper.map_features_to_parameters(&audio_features);
-        self.apply_rhythm_enhancements(&mut enhanced_parameters, &rhythm_features);
+        let enhanced_parameters = self.feature_mapper.map_features_with_rhythm(&audio_features, &rhythm_features);
 
         self.frame_composer.render(&self.wgpu_context, &enhanced_parameters)?;
 
         Ok(())
-    }
-
-    fn apply_rhythm_enhancements(
-        &self,
-        parameters: &mut ShaderParameters,
-        rhythm: &RhythmFeatures,
-    ) {
-        parameters.time_factor *= 1.0 + rhythm.beat_strength * 0.5;
-
-        if rhythm.onset_detected {
-            parameters.overall_brightness *= 1.2;
-            parameters.color_intensity *= 1.1;
-        }
-
-        let tempo_factor = (rhythm.tempo_bpm - 120.0) / 120.0;
-        parameters.frequency_scale *= 1.0 + tempo_factor * 0.2;
-
-        parameters.spectral_shift += rhythm.rhythm_stability * 0.1;
     }
 
     pub fn load_audio_file(&mut self, file_path: &str) -> Result<()> {

@@ -11,6 +11,8 @@ pub struct RhythmFeatures {
     pub tempo_bpm: f32,
     pub onset_detected: bool,
     pub rhythm_stability: f32,
+    pub downbeat_detected: bool,
+    pub beat_position: u8, // 0-3 for quarter notes in 4/4 time
 }
 
 impl RhythmFeatures {
@@ -20,6 +22,8 @@ impl RhythmFeatures {
             tempo_bpm: 120.0,
             onset_detected: false,
             rhythm_stability: 0.0,
+            downbeat_detected: false,
+            beat_position: 0,
         }
     }
 }
@@ -30,6 +34,9 @@ pub struct RhythmDetector {
     last_energy: f32,
     frame_count: u64,
     sample_rate: f32,
+    beat_counter: u8,
+    last_beat_time: f32,
+    tempo_stable: bool,
 }
 
 impl RhythmDetector {
@@ -40,21 +47,44 @@ impl RhythmDetector {
             last_energy: 0.0,
             frame_count: 0,
             sample_rate,
+            beat_counter: 0,
+            last_beat_time: 0.0,
+            tempo_stable: false,
         }
     }
 
     pub fn process_frame(&mut self, frequency_bins: &[f32]) -> RhythmFeatures {
         self.frame_count += 1;
+        let current_time = self.frame_count as f32 / 60.0;
 
         let current_energy = self.calculate_energy(frequency_bins);
         let onset_detected = self.detect_onset(current_energy);
 
+        let mut downbeat_detected = false;
+        let mut beat_position = self.beat_counter;
+
         if onset_detected {
-            let current_time = self.frame_count as f32 / 60.0;
             self.onset_times.push_back(current_time);
 
             if self.onset_times.len() > 50 {
                 self.onset_times.pop_front();
+            }
+
+            // Check if this is a strong beat (potential downbeat or beat)
+            let tempo_bpm = self.estimate_tempo();
+            let expected_beat_interval = 60.0 / tempo_bpm;
+            let current_beat_strength = self.calculate_beat_strength(current_energy);
+
+            // If we have established tempo and this onset aligns with expected beat timing
+            if self.tempo_stable && (current_time - self.last_beat_time) >= (expected_beat_interval * 0.8) {
+                self.beat_counter = (self.beat_counter + 1) % 4;
+                beat_position = self.beat_counter;
+                self.last_beat_time = current_time;
+
+                // Downbeat is beat position 0 with extra strength requirement
+                if self.beat_counter == 0 && current_beat_strength > 0.7 {
+                    downbeat_detected = true;
+                }
             }
         }
 
@@ -67,6 +97,11 @@ impl RhythmDetector {
         let beat_strength = self.calculate_beat_strength(current_energy);
         let rhythm_stability = self.calculate_rhythm_stability();
 
+        // Mark tempo as stable if rhythm stability is high
+        if rhythm_stability > 0.6 {
+            self.tempo_stable = true;
+        }
+
         self.last_energy = current_energy;
 
         RhythmFeatures {
@@ -74,6 +109,8 @@ impl RhythmDetector {
             tempo_bpm,
             onset_detected,
             rhythm_stability,
+            downbeat_detected,
+            beat_position,
         }
     }
 
@@ -206,5 +243,7 @@ mod tests {
         let features = RhythmFeatures::new();
         assert_eq!(features.tempo_bpm, 120.0);
         assert_eq!(features.onset_detected, false);
+        assert_eq!(features.downbeat_detected, false);
+        assert_eq!(features.beat_position, 0);
     }
 }
