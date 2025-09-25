@@ -1,5 +1,6 @@
 use aruu::{AudioProcessor, FeatureMapper};
 use std::time::{Duration, Instant};
+use std::env;
 
 fn main() -> anyhow::Result<()> {
     println!("🎵 Aruu Audio Visualizer - Phase 1 Demo");
@@ -15,6 +16,19 @@ fn main() -> anyhow::Result<()> {
             AudioProcessor::new_default()
         }
     };
+
+    let args: Vec<String> = env::args().collect();
+    if args.len() > 1 {
+        let audio_file = &args[1];
+        println!("🎶 Loading audio file: {}", audio_file);
+        match audio_processor.play_from_file(audio_file) {
+            Ok(_) => println!("✅ Successfully loaded audio file"),
+            Err(e) => println!("❌ Failed to load audio file: {}", e),
+        }
+    } else {
+        println!("💡 Usage: cargo run [audio_file]");
+        println!("   Testing files: sample_gentle.wav, sample_rock.m4a");
+    }
 
     let mut feature_mapper = FeatureMapper::new();
 
