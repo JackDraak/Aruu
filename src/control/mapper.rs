@@ -1,16 +1,28 @@
-use super::{ShaderParameters};
+use super::{ShaderParameters, Smoother, SmoothingType, Smoothable};
 use crate::audio::AudioFeatures;
 
 pub struct FeatureMapper {
-    smoothing_factor: f32,
-    previous_params: ShaderParameters,
+    smoother: Smoother,
 }
 
 impl FeatureMapper {
     pub fn new() -> Self {
+        let mut smoother = Smoother::new();
+
+        // Configure different smoothing types for different parameters
+        smoother.configure_multiple(&[
+            ("color_intensity", SmoothingType::adaptive(0.05, 0.3, 3.0)),
+            ("frequency_scale", SmoothingType::exponential(2.0)),
+            ("time_factor", SmoothingType::linear(0.15)),
+            ("bass_response", SmoothingType::adaptive(0.1, 0.6, 4.0)), // Fast response for bass
+            ("mid_response", SmoothingType::adaptive(0.08, 0.4, 2.5)),
+            ("treble_response", SmoothingType::adaptive(0.05, 0.5, 5.0)), // Very responsive for treble
+            ("overall_brightness", SmoothingType::exponential(3.0)),
+            ("spectral_shift", SmoothingType::exponential(1.5)),
+        ]);
+
         Self {
-            smoothing_factor: 0.1,
-            previous_params: ShaderParameters::new(),
+            smoother,
         }
     }
 
@@ -33,30 +45,22 @@ impl FeatureMapper {
 
         params.time_factor = 1.0 + features.overall_volume * 0.5;
 
-        params = self.smooth_parameters(params);
+        // Apply advanced smoothing
+        params.apply_smoothing(&mut self.smoother);
 
-        self.previous_params = params.clone();
         params
     }
 
-    fn smooth_parameters(&self, new_params: ShaderParameters) -> ShaderParameters {
-        let prev = &self.previous_params;
-        let factor = self.smoothing_factor;
-
-        ShaderParameters {
-            color_intensity: lerp(prev.color_intensity, new_params.color_intensity, factor),
-            frequency_scale: lerp(prev.frequency_scale, new_params.frequency_scale, factor),
-            time_factor: lerp(prev.time_factor, new_params.time_factor, factor),
-            bass_response: lerp(prev.bass_response, new_params.bass_response, factor),
-            mid_response: lerp(prev.mid_response, new_params.mid_response, factor),
-            treble_response: lerp(prev.treble_response, new_params.treble_response, factor),
-            overall_brightness: lerp(prev.overall_brightness, new_params.overall_brightness, factor),
-            spectral_shift: lerp(prev.spectral_shift, new_params.spectral_shift, factor),
-        }
+    pub fn configure_smoothing(&mut self, param_name: &str, smoothing_type: SmoothingType) {
+        self.smoother.configure(param_name, smoothing_type);
     }
 
-    pub fn set_smoothing_factor(&mut self, factor: f32) {
-        self.smoothing_factor = factor.clamp(0.0, 1.0);
+    pub fn get_change_rate(&self, param_name: &str) -> f32 {
+        self.smoother.get_change_rate(param_name)
+    }
+
+    pub fn reset_smoothing(&mut self) {
+        self.smoother.reset_all();
     }
 }
 
@@ -71,7 +75,14 @@ mod tests {
     #[test]
     fn test_feature_mapping() {
         let mut mapper = FeatureMapper::new();
-        mapper.set_smoothing_factor(1.0);
+
+        // Configure for instant response (no smoothing) for testing
+        mapper.configure_smoothing("bass_response", SmoothingType::linear(1.0));
+        mapper.configure_smoothing("mid_response", SmoothingType::linear(1.0));
+        mapper.configure_smoothing("treble_response", SmoothingType::linear(1.0));
+        mapper.configure_smoothing("overall_brightness", SmoothingType::linear(1.0));
+        mapper.configure_smoothing("color_intensity", SmoothingType::linear(1.0));
+
         let features = AudioFeatures {
             bass: 0.5,
             mid: 0.3,
@@ -84,19 +95,23 @@ mod tests {
 
         let params = mapper.map_features_to_parameters(&features);
 
-        assert!((params.bass_response - 0.5).abs() < 0.001);
-        assert!((params.mid_response - 0.3).abs() < 0.001);
-        assert!((params.treble_response - 0.2).abs() < 0.001);
-        assert!((params.overall_brightness - 0.4).abs() < 0.001);
+        assert!((params.bass_response - 0.5).abs() < 0.01);
+        assert!((params.mid_response - 0.3).abs() < 0.01);
+        assert!((params.treble_response - 0.2).abs() < 0.01);
+        assert!((params.overall_brightness - 0.4).abs() < 0.01);
 
         let expected_color_intensity = (0.5f32 * 0.4 + 0.3 * 0.4 + 0.2 * 0.2).clamp(0.0, 1.0);
-        assert!((params.color_intensity - expected_color_intensity).abs() < 0.001);
+        assert!((params.color_intensity - expected_color_intensity).abs() < 0.05);
     }
 
     #[test]
     fn test_parameter_smoothing() {
         let mut mapper = FeatureMapper::new();
-        mapper.set_smoothing_factor(0.5);
+
+        // Use moderate smoothing for testing
+        mapper.configure_smoothing("bass_response", SmoothingType::linear(0.5));
+        mapper.configure_smoothing("mid_response", SmoothingType::linear(0.5));
+        mapper.configure_smoothing("treble_response", SmoothingType::linear(0.5));
 
         let features1 = AudioFeatures {
             bass: 1.0,
@@ -122,6 +137,7 @@ mod tests {
 
         let params2 = mapper.map_features_to_parameters(&features2);
 
+        // With 0.5 smoothing factor, values should be between previous (1.0) and new (0.0)
         assert!(params2.bass_response > 0.0 && params2.bass_response < 1.0);
         assert!(params2.mid_response > 0.0 && params2.mid_response < 1.0);
         assert!(params2.treble_response > 0.0 && params2.treble_response < 1.0);

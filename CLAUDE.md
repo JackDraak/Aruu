@@ -84,14 +84,37 @@ Control Layer
   - Bass-responsive effects and center glow
 
 ### Integration Features ✅
-- Command-line audio file support
+- Command-line audio file support (WAV, M4A/AAC)
 - Real-time microphone input
 - Rhythm-enhanced shader parameters
 - Onset detection for visual bursts
 - Tempo-responsive frequency scaling
 
+## Enhanced Smoothing System ✅
+
+### Advanced State Transition Smoothing
+- `Smoother`: Generalized smoothing system for visual transitions
+- **Linear Smoothing**: Constant rate transitions
+- **Exponential Smoothing**: Natural decay-based transitions
+- **Adaptive Smoothing**: Dynamic response based on change rate
+
+### Per-Parameter Smoothing Configuration
+- **Bass Response**: Adaptive (0.1-0.6 factor, high sensitivity)
+- **Mid Response**: Adaptive (0.08-0.4 factor, moderate sensitivity)
+- **Treble Response**: Adaptive (0.05-0.5 factor, very responsive)
+- **Overall Brightness**: Exponential decay (3.0)
+- **Color Intensity**: Adaptive (0.05-0.3 factor, high sensitivity)
+- **Frequency Scale**: Exponential decay (2.0)
+- **Spectral Shift**: Exponential decay (1.5)
+
+### Benefits
+- Eliminates visual jitter and harsh transitions
+- Maintains responsiveness for musical elements
+- Different smoothing strategies optimized per parameter type
+- Adaptive smoothing responds faster to significant changes
+
 ## Dependencies (Implemented)
-- rodio: Audio stream processing ✅
+- rodio: Audio stream processing with Symphonia features ✅
 - wgpu: GPU rendering ✅
 - rustfft: FFT analysis ✅
 - cpal: Cross-platform audio I/O ✅
@@ -99,6 +122,7 @@ Control Layer
 - bytemuck: Safe transmutation utilities ✅
 - pollster: Async runtime for WGPU ✅
 - tokio: Async runtime for main application ✅
+- symphonia: Extended audio format support (AAC, M4A) ✅
 - anyhow: Error handling ✅
 
 ## Usage
@@ -106,12 +130,26 @@ Control Layer
 # Real-time microphone visualization
 cargo run
 
-# Play audio file with visualization
+# Play audio file with visualization (supports WAV, M4A/AAC)
 cargo run sample_gentle.wav
 cargo run sample_rock.m4a
 
-# Run tests
+# Run tests (16 total: 14 lib + 2 main)
 cargo test
+```
+
+## Audio Format Support
+- **WAV**: PCM audio files
+- **M4A/AAC**: Advanced Audio Coding files
+- **Real-time**: Microphone input with CPAL
+
+## Smoothing System Usage
+```rust
+// Configure custom smoothing for specific parameters
+let mut mapper = FeatureMapper::new();
+mapper.configure_smoothing("bass_response", SmoothingType::linear(0.8));
+mapper.configure_smoothing("brightness", SmoothingType::exponential(5.0));
+mapper.configure_smoothing("color", SmoothingType::adaptive(0.1, 0.7, 3.0));
 ```
 
 ## Next Steps (Phase 3)
