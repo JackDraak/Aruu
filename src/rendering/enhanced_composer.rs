@@ -81,6 +81,7 @@ impl EnhancedFrameComposer {
         context: &WgpuContext,
         audio_features: &AudioFeatures,
         rhythm_features: &RhythmFeatures,
+        safety_multipliers: Option<crate::control::safety::SafetyMultipliers>,
     ) -> Result<()> {
         // Start frame timing
         let frame_start = Instant::now();
@@ -107,6 +108,7 @@ impl EnhancedFrameComposer {
             audio_features,
             rhythm_features,
             current_quality,
+            safety_multipliers,
         )?;
 
         output.present();

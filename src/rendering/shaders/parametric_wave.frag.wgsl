@@ -60,6 +60,14 @@ struct UniversalUniforms {
     // Resolution
     resolution_x: f32,
     resolution_y: f32,
+
+    // Safety multipliers for epilepsy prevention
+    safety_beat_intensity: f32,
+    safety_onset_intensity: f32,
+    safety_color_change_rate: f32,
+    safety_brightness_range: f32,
+    safety_pattern_complexity: f32,
+    safety_emergency_stop: f32,
 }
 
 @group(0) @binding(0)
@@ -139,8 +147,10 @@ fn generate_pattern(uv: vec2<f32>, params: AudioParams) -> f32 {
     let wave3 = sin(length(uv * (2.0 + uniforms.treble * 3.0)) * 3.0 - uniforms.time * params.speed * 1.3);
 
     // Beat-driven pulse waves
-    let beat_pulse = sin(uniforms.time * params.speed * 4.0) * uniforms.beat_strength;
-    let wave4 = cos(radius * 8.0 + beat_pulse * 10.0);
+    // Safe beat pulse with safety multipliers
+    let safe_beat_strength = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_pulse = sin(uniforms.time * params.speed * 2.0) * safe_beat_strength * 0.5; // Slower, gentler
+    let wave4 = cos(radius * 8.0 + beat_pulse * 5.0); // Reduced intensity
 
     // Spectral flux creates texture variation
     let texture_noise = sin(uv.x * 20.0 + uniforms.spectral_flux * 50.0) *
@@ -154,12 +164,14 @@ fn generate_pattern(uv: vec2<f32>, params: AudioParams) -> f32 {
 fn apply_audio_chromatic_effects(color: vec3<f32>, pattern: f32) -> vec3<f32> {
     var enhanced_color = color;
 
-    // Beat-driven chromatic aberration
-    enhanced_color.r = enhanced_color.r + sin(uniforms.time * 0.5 + uniforms.beat_strength * 5.0) * 0.1;
-    enhanced_color.b = enhanced_color.b + cos(uniforms.time * 0.3 + uniforms.beat_strength * 3.0) * 0.1;
+    // Safe chromatic aberration with safety multipliers
+    let safe_beat_effect = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    enhanced_color.r = enhanced_color.r + sin(uniforms.time * 0.3 + safe_beat_effect * 2.0) * 0.05; // Reduced intensity
+    enhanced_color.b = enhanced_color.b + cos(uniforms.time * 0.2 + safe_beat_effect * 1.5) * 0.05; // Reduced intensity
 
-    // Onset strength creates sudden color shifts
-    let onset_shift = uniforms.onset_strength * sin(pattern * 3.0) * 0.2;
+    // Safe onset shifts with gradual transitions
+    let safe_onset_strength = uniforms.onset_strength * uniforms.safety_onset_intensity;
+    let onset_shift = safe_onset_strength * sin(pattern * 3.0) * 0.1; // Reduced from 0.2
     enhanced_color.g = enhanced_color.g + onset_shift;
 
     // Zero crossing rate affects color saturation
@@ -191,20 +203,33 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
     // Apply audio-driven chromatic effects
     color = apply_audio_chromatic_effects(color, pattern);
 
-    // Radial gradient with bass-responsive falloff
+    // Safe radial gradient with controlled bass response
     let radius = length(uv);
-    let gradient_power = 0.7 + uniforms.bass * 0.5; // Bass extends the gradient
+    let safe_bass_effect = uniforms.bass * uniforms.safety_beat_intensity;
+    let gradient_power = 0.7 + safe_bass_effect * 0.3; // Reduced bass influence
     let gradient = 1.0 - pow(radius, gradient_power);
     color = color * gradient;
 
-    // Dynamic range affects overall brightness
-    let brightness_factor = 0.8 + uniforms.dynamic_range * 0.4;
+    // Safe dynamic range with brightness limits
+    let safe_dynamic_factor = uniforms.dynamic_range * uniforms.safety_brightness_range;
+    let brightness_factor = 0.8 + safe_dynamic_factor * 0.2; // Reduced brightness variation
     color = color * brightness_factor;
 
     // Apply global saturation control
     let final_saturation = uniforms.saturation;
     let luminance = dot(color, vec3<f32>(0.299, 0.587, 0.114));
     color = mix(vec3<f32>(luminance), color, final_saturation);
+
+    // Apply safety brightness limits
+    color = color * uniforms.safety_brightness_range;
+
+    // Apply emergency stop override
+    color = color * uniforms.safety_emergency_stop;
+
+    // Emergency stop fallback: show dim gray
+    if (uniforms.safety_emergency_stop < 0.1) {
+        color = vec3<f32>(0.1, 0.1, 0.1);
+    }
 
     // Ensure color values stay in valid range
     color = clamp(color, vec3<f32>(0.0), vec3<f32>(1.0));

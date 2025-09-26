@@ -60,6 +60,14 @@ struct UniversalUniforms {
     // Resolution
     resolution_x: f32,
     resolution_y: f32,
+
+    // Safety multipliers for epilepsy prevention
+    safety_beat_intensity: f32,
+    safety_onset_intensity: f32,
+    safety_color_change_rate: f32,
+    safety_brightness_range: f32,
+    safety_pattern_complexity: f32,
+    safety_emergency_stop: f32,
 }
 
 @group(0) @binding(0)
@@ -94,7 +102,8 @@ fn complex_magnitude_sq(z: vec2<f32>) -> f32 {
 fn mandelbrot_fractal(uv: vec2<f32>) -> f32 {
     // Audio-reactive zoom and translation
     let bass_zoom = 0.5 + uniforms.bass * 2.0 + uniforms.sub_bass * 1.5;
-    let beat_offset = uniforms.beat_strength * sin(uniforms.time * 4.0) * 0.1;
+    let safe_beat_offset = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_offset = safe_beat_offset * sin(uniforms.time * 2.0) * 0.05; // Reduced speed and intensity
 
     // Spectral centroid influences fractal center point
     let spectral_offset = vec2<f32>(
@@ -118,7 +127,8 @@ fn mandelbrot_fractal(uv: vec2<f32>) -> f32 {
         }
 
         // Audio-reactive fractal equation variations
-        let onset_variation = uniforms.onset_strength * sin(uniforms.time * 8.0) * 0.1;
+        let safe_onset_variation = uniforms.onset_strength * uniforms.safety_onset_intensity;
+        let onset_variation = safe_onset_variation * sin(uniforms.time * 4.0) * 0.05; // Reduced speed and intensity
         let modified_c = c + vec2<f32>(onset_variation, 0.0);
 
         z = complex_square(z) + modified_c;
@@ -175,7 +185,8 @@ fn julia_fractal(uv: vec2<f32>) -> f32 {
         z = complex_square(z) + julia_c;
 
         // Beat-driven iteration modifications
-        if (uniforms.beat_strength > 0.6) {
+        let safe_beat_threshold = uniforms.beat_strength * uniforms.safety_beat_intensity;
+        if (safe_beat_threshold > 0.3) { // Reduced threshold
             z += vec2<f32>(sin(f32(i) * 0.8) * 0.02);
         }
 
@@ -259,15 +270,17 @@ fn get_fractal_color(pattern: f32, uv: vec2<f32>) -> vec3<f32> {
     // Brightness influenced by pattern and volume
     let base_brightness = uniforms.overall_volume * (0.3 + pattern * 0.7);
 
-    // Beat-driven brightness pulses
-    let beat_brightness = 1.0 + uniforms.beat_strength * sin(uniforms.time * 6.0 + pattern * 10.0) * 0.4;
+    // Safe beat-driven brightness pulses
+    let safe_beat_brightness = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_brightness = 1.0 + safe_beat_brightness * sin(uniforms.time * 3.0 + pattern * 5.0) * 0.2; // Reduced speed and intensity
     let final_brightness = base_brightness * beat_brightness;
 
     // Generate HSV color
     var color = hsv_to_rgb(vec3<f32>(fract(final_hue), pattern_saturation, final_brightness));
 
     // Onset creates color highlights
-    let onset_highlight = uniforms.onset_strength * (1.0 - pattern) * 0.5;
+    let safe_onset_highlight = uniforms.onset_strength * uniforms.safety_onset_intensity;
+    let onset_highlight = safe_onset_highlight * (1.0 - pattern) * 0.25; // Reduced intensity
     color += vec3<f32>(onset_highlight, onset_highlight * 0.7, onset_highlight * 0.4);
 
     // Zero crossing rate affects color complexity
@@ -296,12 +309,21 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
 
     color += vec3<f32>(edge_enhancement);
 
-    // Apply global intensity
-    color = color * uniforms.color_intensity;
+    // Apply safe global intensity
+    color = color * uniforms.color_intensity * uniforms.safety_brightness_range;
 
-    // Dynamic range affects overall contrast
-    let contrast = 1.0 + uniforms.dynamic_range * 0.4;
+    // Safe dynamic range with pattern complexity control
+    let safe_dynamic_factor = uniforms.dynamic_range * uniforms.safety_pattern_complexity;
+    let contrast = 1.0 + safe_dynamic_factor * 0.2; // Reduced from 0.4
     color = pow(color, vec3<f32>(1.0 / contrast));
+
+    // Apply emergency stop override
+    color = color * uniforms.safety_emergency_stop;
+
+    // Emergency stop fallback: show dim gray
+    if (uniforms.safety_emergency_stop < 0.1) {
+        color = vec3<f32>(0.1, 0.1, 0.1);
+    }
 
     // Ensure color values stay in valid range
     color = clamp(color, vec3<f32>(0.0), vec3<f32>(1.0));

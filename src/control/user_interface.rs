@@ -3,6 +3,7 @@ use winit::event::{ElementState, KeyEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::rendering::{EnhancedFrameComposer, ShaderType, QualityLevel};
+use crate::control::{SafetyEngine, SafetyLevel, EpilepsyWarning};
 
 /// User interface controls for real-time interaction
 pub struct UserInterface {
@@ -18,6 +19,14 @@ pub struct UserInterface {
     available_shaders: Vec<ShaderType>,
     /// Help display state
     show_help: bool,
+    /// Safety system for epilepsy prevention
+    pub safety_engine: SafetyEngine,
+    /// Epilepsy warning screen handler
+    pub epilepsy_warning: EpilepsyWarning,
+    /// Current safety level
+    current_safety_level: SafetyLevel,
+    /// Show safety status in overlay
+    pub show_safety_status: bool,
 }
 
 impl UserInterface {
@@ -38,6 +47,10 @@ impl UserInterface {
                 ShaderType::Spectralizer,
             ],
             show_help: false,
+            safety_engine: SafetyEngine::new(),
+            epilepsy_warning: EpilepsyWarning::new(),
+            current_safety_level: SafetyLevel::Safe, // Default to safe
+            show_safety_status: true, // Show safety status by default
         }
     }
 
@@ -141,6 +154,30 @@ impl UserInterface {
                 // Help display toggle
                 KeyCode::KeyH | KeyCode::F1 => {
                     self.toggle_help();
+                    handled = true;
+                }
+
+                // Emergency stop (ESC key) - Critical safety feature
+                KeyCode::Escape => {
+                    self.emergency_stop();
+                    handled = true;
+                }
+
+                // Safety level controls
+                KeyCode::KeyS => {
+                    self.cycle_safety_level();
+                    handled = true;
+                }
+
+                // Safety status toggle
+                KeyCode::KeyZ => {
+                    self.toggle_safety_status();
+                    handled = true;
+                }
+
+                // Resume from emergency stop
+                KeyCode::KeyX => {
+                    self.resume_from_emergency();
                     handled = true;
                 }
 
@@ -258,6 +295,12 @@ impl UserInterface {
         println!("  T       Ultra quality");
         println!("  Y       Auto quality");
         println!();
+        println!("🛡️  SAFETY CONTROLS:");
+        println!("  ESC     Emergency stop (critical safety)");
+        println!("  S       Cycle safety level");
+        println!("  X       Resume from emergency stop");
+        println!("  Z       Toggle safety status display");
+        println!();
         println!("DISPLAY:");
         println!("  P       Toggle performance overlay");
         println!("  H/F1    Toggle this help");
@@ -271,6 +314,12 @@ impl UserInterface {
         println!("  6. Particle     - Dynamic particle systems");
         println!("  7. Fractal      - Mandelbrot/Julia sets");
         println!("  8. Spectralizer - Direct frequency visualization");
+        println!();
+        println!("🛡️  SAFETY LEVELS:");
+        println!("  🛡️ Ultra Safe   - Maximum epilepsy protection");
+        println!("  🔒 Safe         - Conservative (default)");
+        println!("  ⚠️ Moderate     - Balanced experience");
+        println!("  🎨 Standard     - Near-full features");
         println!("========================================\n");
     }
 
@@ -316,6 +365,136 @@ impl UserInterface {
     /// Get current shader cycle index
     pub fn current_shader_index(&self) -> usize {
         self.shader_cycle_index
+    }
+
+    // ====== SAFETY CONTROL METHODS ======
+
+    /// Emergency stop - immediately halt all visual effects
+    pub fn emergency_stop(&mut self) {
+        self.safety_engine.emergency_stop();
+        println!("⛔ EMERGENCY STOP ACTIVATED - All visual effects halted");
+        println!("   Press X to resume or adjust safety levels");
+        println!("   ESC again to exit application");
+    }
+
+    /// Resume from emergency stop
+    pub fn resume_from_emergency(&mut self) {
+        if self.safety_engine.is_emergency_stopped() {
+            self.safety_engine.resume();
+            println!("✅ Emergency stop released - Visual effects resumed");
+            println!("   Current safety level: {:?}", self.current_safety_level);
+        }
+    }
+
+    /// Cycle through safety levels
+    pub fn cycle_safety_level(&mut self) {
+        self.current_safety_level = match self.current_safety_level {
+            SafetyLevel::UltraSafe => SafetyLevel::Safe,
+            SafetyLevel::Safe => SafetyLevel::Moderate,
+            SafetyLevel::Moderate => SafetyLevel::Standard,
+            SafetyLevel::Standard => SafetyLevel::UltraSafe, // Loop back to most safe
+            SafetyLevel::Disabled => SafetyLevel::UltraSafe, // Never stay disabled from user input
+        };
+
+        self.safety_engine.set_safety_level(self.current_safety_level);
+
+        let level_description = match self.current_safety_level {
+            SafetyLevel::UltraSafe => "🛡️ Ultra Safe (Maximum protection)",
+            SafetyLevel::Safe => "🔒 Safe (Conservative default)",
+            SafetyLevel::Moderate => "⚠️ Moderate (Balanced experience)",
+            SafetyLevel::Standard => "🎨 Standard (Near-full features)",
+            SafetyLevel::Disabled => "⚠️ DISABLED (Medical use only)",
+        };
+
+        println!("🛡️  Safety Level: {}", level_description);
+    }
+
+    /// Toggle safety status display
+    pub fn toggle_safety_status(&mut self) {
+        self.show_safety_status = !self.show_safety_status;
+        let status = if self.show_safety_status { "ON" } else { "OFF" };
+        println!("🔍 Safety status display: {}", status);
+    }
+
+    /// Get current safety level
+    pub fn get_safety_level(&self) -> SafetyLevel {
+        self.current_safety_level
+    }
+
+    /// Get safety engine for external access
+    pub fn get_safety_engine(&self) -> &SafetyEngine {
+        &self.safety_engine
+    }
+
+    /// Get mutable safety engine for external access
+    pub fn get_safety_engine_mut(&mut self) -> &mut SafetyEngine {
+        &mut self.safety_engine
+    }
+
+    /// Check if emergency stop is active
+    pub fn is_emergency_stopped(&self) -> bool {
+        self.safety_engine.is_emergency_stopped()
+    }
+
+    /// Get current safety multipliers for shaders
+    pub fn get_safety_multipliers(&self) -> crate::control::safety::SafetyMultipliers {
+        self.safety_engine.get_safety_multipliers()
+    }
+
+    /// Handle epilepsy warning screen input
+    pub fn handle_warning_input(&mut self, event: &KeyEvent) -> bool {
+        self.epilepsy_warning.handle_input(event)
+    }
+
+    /// Check if warning should be displayed
+    pub fn should_display_warning(&self) -> bool {
+        self.epilepsy_warning.should_display()
+    }
+
+    /// Check if user wants to exit from warning
+    pub fn should_exit_from_warning(&self) -> bool {
+        self.epilepsy_warning.should_exit()
+    }
+
+    /// Apply safety mode from warning selection
+    pub fn apply_warning_selection(&mut self) {
+        if self.epilepsy_warning.wants_safety_mode() {
+            self.current_safety_level = SafetyLevel::UltraSafe;
+            self.safety_engine.set_safety_level(SafetyLevel::UltraSafe);
+            println!("🛡️  Ultra Safe mode activated from warning screen");
+        }
+        self.epilepsy_warning.dismiss();
+    }
+
+    /// Get safety status for display in performance overlay
+    pub fn get_safety_status_display(&self) -> Option<String> {
+        if !self.show_safety_status {
+            return None;
+        }
+
+        let status = self.safety_engine.get_safety_status();
+        let mut safety_text = vec![
+            "🛡️  SAFETY STATUS".to_string(),
+            "=".repeat(20),
+            status.get_status_message(),
+        ];
+
+        if status.emergency_stopped {
+            safety_text.push("⛔ EMERGENCY STOP ACTIVE".to_string());
+            safety_text.push("Press X to resume".to_string());
+        }
+
+        if status.should_warn_user() {
+            safety_text.push("⚠️  High visual activity detected".to_string());
+        }
+
+        if !status.warnings.is_empty() {
+            for warning in &status.warnings {
+                safety_text.push(format!("⚠️  {}", warning));
+            }
+        }
+
+        Some(safety_text.join("\n"))
     }
 }
 

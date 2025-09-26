@@ -60,6 +60,14 @@ struct UniversalUniforms {
     // Resolution
     resolution_x: f32,
     resolution_y: f32,
+
+    // Safety multipliers for epilepsy prevention
+    safety_beat_intensity: f32,
+    safety_onset_intensity: f32,
+    safety_color_change_rate: f32,
+    safety_brightness_range: f32,
+    safety_pattern_complexity: f32,
+    safety_emergency_stop: f32,
 }
 
 @group(0) @binding(0)
@@ -129,11 +137,13 @@ fn generate_plasma(uv: vec2<f32>) -> f32 {
     // Layer 3: High-frequency details
     let layer3 = fractal_noise(uv * treble_scale + vec2<f32>(time * flow_speed * 0.6, time * flow_speed * -0.3), 2);
 
-    // Beat-driven pulse modulation
-    let beat_pulse = 1.0 + uniforms.beat_strength * sin(time * flow_speed * 8.0) * 0.3;
+    // Safe beat-driven pulse modulation
+    let safe_beat_strength = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_pulse = 1.0 + safe_beat_strength * sin(time * flow_speed * 4.0) * 0.15; // Reduced speed and intensity
 
-    // Onset creates sudden texture shifts
-    let onset_distortion = uniforms.onset_strength * sin(uv.x * 20.0 + time * 10.0) * 0.1;
+    // Safe onset texture shifts with gradual transitions
+    let safe_onset_strength = uniforms.onset_strength * uniforms.safety_onset_intensity;
+    let onset_distortion = safe_onset_strength * sin(uv.x * 10.0 + time * 5.0) * 0.05; // Reduced frequency and intensity
 
     // Spectral flux adds dynamic texture variation
     let flux_variation = uniforms.spectral_flux * fractal_noise(uv * 10.0 + vec2<f32>(time * 2.0), 2) * 0.2;
@@ -142,8 +152,9 @@ fn generate_plasma(uv: vec2<f32>) -> f32 {
     var plasma = layer1 * 0.5 + layer2 * 0.3 + layer3 * 0.2;
     plasma = plasma * beat_pulse + onset_distortion + flux_variation;
 
-    // Dynamic range affects plasma contrast
-    let contrast = 1.0 + uniforms.dynamic_range * 0.5;
+    // Safe dynamic range with controlled contrast
+    let safe_dynamic_factor = uniforms.dynamic_range * uniforms.safety_pattern_complexity;
+    let contrast = 1.0 + safe_dynamic_factor * 0.25; // Reduced contrast range
     plasma = pow(abs(plasma), 1.0 / contrast) * sign(plasma);
 
     return plasma;
@@ -176,8 +187,9 @@ fn get_plasma_color(plasma: f32, uv: vec2<f32>) -> vec3<f32> {
     let freq_blend = uniforms.spectral_flux * 0.5;
     hsv_color = mix(hsv_color, freq_color * brightness, freq_blend);
 
-    // Beat-driven color pulsing
-    let beat_boost = 1.0 + uniforms.beat_strength * sin(uniforms.time * 4.0) * 0.2;
+    // Safe beat-driven color pulsing
+    let safe_beat_pulsing = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_boost = 1.0 + safe_beat_pulsing * sin(uniforms.time * 2.0) * 0.1; // Reduced speed and intensity
     hsv_color = hsv_color * beat_boost;
 
     return hsv_color;
@@ -195,20 +207,31 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
     // Generate audio-reactive color
     var color = get_plasma_color(plasma, uv);
 
-    // Radial falloff with bass extension
+    // Safe radial falloff with controlled bass extension
     let radius = length(uv);
-    let bass_extension = 1.0 + uniforms.bass * 0.4;
-    let falloff_radius = 1.2 * bass_extension;
+    let safe_bass_extension = 1.0 + uniforms.bass * uniforms.safety_beat_intensity * 0.2; // Reduced from 0.4
+    let falloff_radius = 1.2 * safe_bass_extension;
     let falloff = 1.0 - smoothstep(falloff_radius * 0.7, falloff_radius, radius);
 
     color = color * falloff;
 
-    // Zero crossing rate affects overall texture sharpness
-    let sharpness = 1.0 + uniforms.zero_crossing_rate * 0.3;
+    // Safe texture sharpness with pattern complexity control
+    let safe_sharpness_factor = uniforms.zero_crossing_rate * uniforms.safety_pattern_complexity;
+    let sharpness = 1.0 + safe_sharpness_factor * 0.15; // Reduced from 0.3
     color = pow(color, vec3<f32>(1.0 / sharpness));
 
-    // Apply color intensity and ensure valid range
-    color = color * uniforms.color_intensity;
+    // Apply safe color intensity
+    color = color * uniforms.color_intensity * uniforms.safety_brightness_range;
+
+    // Apply emergency stop override
+    color = color * uniforms.safety_emergency_stop;
+
+    // Emergency stop fallback: show dim gray
+    if (uniforms.safety_emergency_stop < 0.1) {
+        color = vec3<f32>(0.1, 0.1, 0.1);
+    }
+
+    // Ensure color values stay in valid range
     color = clamp(color, vec3<f32>(0.0), vec3<f32>(1.0));
 
     return vec4<f32>(color, 1.0);

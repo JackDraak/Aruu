@@ -60,6 +60,14 @@ struct UniversalUniforms {
     // Resolution
     resolution_x: f32,
     resolution_y: f32,
+
+    // Safety multipliers for epilepsy prevention
+    safety_beat_intensity: f32,
+    safety_onset_intensity: f32,
+    safety_color_change_rate: f32,
+    safety_brightness_range: f32,
+    safety_pattern_complexity: f32,
+    safety_emergency_stop: f32,
 }
 
 @group(0) @binding(0)
@@ -113,14 +121,19 @@ fn get_frequency_bar_height(freq_position: f32) -> f32 {
     // Interpolate between bands for smooth transitions
     let interpolated_height = mix(current_band, next_band, band_fraction);
 
-    // Beat-driven amplitude modulation
-    let beat_boost = 1.0 + uniforms.beat_strength * sin(uniforms.time * 8.0 + freq_position * 10.0) * 0.3;
+    // Safe beat-driven amplitude modulation (limited by safety multipliers)
+    let safe_beat_strength = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_boost = 1.0 + safe_beat_strength * sin(uniforms.time * 4.0 + freq_position * 5.0) * 0.15; // Slower, gentler
     let final_height = interpolated_height * beat_boost;
 
-    // Onset creates sudden spikes across all frequencies
-    let onset_spike = uniforms.onset_strength * exp(-abs(freq_position - 0.5) * 4.0) * 0.4;
+    // Safe onset effects (gradual rather than sudden spikes)
+    let safe_onset_strength = uniforms.onset_strength * uniforms.safety_onset_intensity;
+    let onset_enhancement = safe_onset_strength * smoothstep(0.0, 1.0, exp(-abs(freq_position - 0.5) * 2.0)) * 0.2; // Gradual curve
 
-    return final_height + onset_spike;
+    // Apply emergency stop override
+    let emergency_multiplier = uniforms.safety_emergency_stop;
+
+    return (final_height + onset_enhancement) * emergency_multiplier;
 }
 
 // Generate spectrum analyzer bars
@@ -180,8 +193,9 @@ fn generate_waveform(uv: vec2<f32>) -> f32 {
     // Combine waveform components
     let combined_wave = (wave_bass + wave_mid + wave_treble + wave_noise) * uniforms.overall_volume;
 
-    // Beat-driven amplitude modulation
-    let beat_modulation = 1.0 + uniforms.beat_strength * sin(time * 6.0) * 0.5;
+    // Safe beat-driven amplitude modulation
+    let safe_beat_strength = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_modulation = 1.0 + safe_beat_strength * sin(time * 3.0) * 0.25; // Slower, gentler
     let final_wave = combined_wave * beat_modulation;
 
     // Create waveform line with thickness
@@ -307,13 +321,15 @@ fn get_spectralizer_color(pattern: f32, uv: vec2<f32>) -> vec3<f32> {
 
     color = mix(color, freq_color * brightness, freq_blend);
 
-    // Beat-driven color pulsing
-    let beat_pulse = 1.0 + uniforms.beat_strength * sin(uniforms.time * 8.0 + freq_pos * 20.0) * 0.3;
+    // Safe beat-driven color pulsing
+    let safe_beat_strength = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_pulse = 1.0 + safe_beat_strength * sin(uniforms.time * 4.0 + freq_pos * 10.0) * 0.15; // Slower, gentler
     color = color * beat_pulse;
 
-    // Onset creates bright flashes
-    let onset_flash = uniforms.onset_strength * pattern * 0.5;
-    color += vec3<f32>(onset_flash);
+    // Safe onset enhancement (gradual rather than flashes)
+    let safe_onset_strength = uniforms.onset_strength * uniforms.safety_onset_intensity;
+    let onset_enhancement = safe_onset_strength * pattern * 0.25; // Reduced intensity
+    color += vec3<f32>(onset_enhancement) * uniforms.safety_brightness_range;
 
     return color;
 }
@@ -336,12 +352,22 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
 
     color += background_color;
 
-    // Apply global intensity
-    color = color * uniforms.color_intensity;
+    // Apply global intensity with safety limits
+    let safe_color_intensity = uniforms.color_intensity * uniforms.safety_brightness_range;
+    color = color * safe_color_intensity;
 
-    // Dynamic range affects overall brightness
-    let brightness_factor = 0.8 + uniforms.dynamic_range * 0.4;
+    // Dynamic range affects overall brightness (limited for safety)
+    let safe_dynamic_factor = uniforms.dynamic_range * uniforms.safety_pattern_complexity;
+    let brightness_factor = 0.8 + safe_dynamic_factor * 0.2; // Reduced range
     color = color * brightness_factor;
+
+    // Apply emergency stop override
+    color = color * uniforms.safety_emergency_stop;
+
+    // Emergency stop fallback: show dim gray
+    if (uniforms.safety_emergency_stop < 0.1) {
+        color = vec3<f32>(0.1, 0.1, 0.1);
+    }
 
     // Ensure color values stay in valid range
     color = clamp(color, vec3<f32>(0.0), vec3<f32>(1.0));

@@ -1,4 +1,54 @@
-/target
-*.m4a
+# Rust/Cargo
+/target/
+/Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+
+# Audio files (samples/test files)
 *.wav
 *.mp3
+*.m4a
+*.flac
+*.ogg
+*.aac
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Build artifacts
+*.dll
+*.exe
+*.so
+*.dylib
+
+# Configuration files (if they contain sensitive info)
+config.toml
+settings.json
+
+# Documentation build
+/docs/book/
+/docs/target/
+
+# Backup files
+*.bak
+*.backup

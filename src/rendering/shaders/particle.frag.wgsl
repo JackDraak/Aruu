@@ -60,6 +60,14 @@ struct UniversalUniforms {
     // Resolution
     resolution_x: f32,
     resolution_y: f32,
+
+    // Safety multipliers for epilepsy prevention
+    safety_beat_intensity: f32,
+    safety_onset_intensity: f32,
+    safety_color_change_rate: f32,
+    safety_brightness_range: f32,
+    safety_pattern_complexity: f32,
+    safety_emergency_stop: f32,
 }
 
 @group(0) @binding(0)
@@ -104,8 +112,9 @@ fn simulate_particle(particle_id: vec2<f32>, time: f32) -> vec4<f32> {
     let lifecycle_speed = 0.8 + bpm_speed * 1.5;
     let lifecycle = fract(time * lifecycle_speed + random_seed);
 
-    // Particle birth and death tied to onsets
-    let onset_birth_probability = uniforms.onset_strength * 0.7;
+    // Safe particle birth and death tied to onsets
+    let safe_onset_birth = uniforms.onset_strength * uniforms.safety_onset_intensity;
+    let onset_birth_probability = safe_onset_birth * 0.35; // Reduced from 0.7
     let birth_threshold = 0.1 + onset_birth_probability;
     let alive = step(birth_threshold, lifecycle) * (1.0 - step(0.9, lifecycle));
 
@@ -118,7 +127,8 @@ fn simulate_particle(particle_id: vec2<f32>, time: f32) -> vec4<f32> {
     let total_velocity = bass_velocity + treble_scatter;
 
     // Beat-driven explosive motion
-    let beat_boost = uniforms.beat_strength * sin(time * 8.0 + random_seed * 6.28318) * 1.5;
+    let safe_beat_boost = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_boost = safe_beat_boost * sin(time * 4.0 + random_seed * 6.28318) * 0.75; // Reduced speed and intensity
     let explosive_velocity = total_velocity * (1.0 + beat_boost);
 
     // Current position
@@ -128,7 +138,8 @@ fn simulate_particle(particle_id: vec2<f32>, time: f32) -> vec4<f32> {
     // Size influenced by dynamic range
     let base_size = 0.02 + uniforms.dynamic_range * 0.05;
     let age_size = base_size * (1.0 - age * 0.7); // Shrink with age
-    let beat_size = age_size * (1.0 + uniforms.beat_strength * 0.5);
+    let safe_beat_size_factor = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_size = age_size * (1.0 + safe_beat_size_factor * 0.25); // Reduced from 0.5
 
     return vec4<f32>(position, beat_size, alive);
 }
@@ -207,11 +218,13 @@ fn get_particle_color(brightness: f32, uv: vec2<f32>) -> vec3<f32> {
     color = mix(color, normalized_freq_color * hsv_brightness, freq_blend);
 
     // Beat-driven color flashing
-    let beat_flash = 1.0 + uniforms.beat_strength * sin(uniforms.time * 10.0 + position_hash * 6.28318) * 0.4;
+    let safe_beat_flash = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_flash = 1.0 + safe_beat_flash * sin(uniforms.time * 5.0 + position_hash * 6.28318) * 0.2; // Reduced speed and intensity
     color = color * beat_flash;
 
     // Onset creates white-hot particle cores
-    let onset_core = uniforms.onset_strength * brightness * 0.8;
+    let safe_onset_core = uniforms.onset_strength * uniforms.safety_onset_intensity;
+    let onset_core = safe_onset_core * brightness * 0.4; // Reduced from 0.8
     color += vec3<f32>(onset_core);
 
     return color;
@@ -236,12 +249,21 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
 
     color += background_color;
 
-    // Apply global intensity
-    color = color * uniforms.color_intensity;
+    // Apply safe global intensity
+    color = color * uniforms.color_intensity * uniforms.safety_brightness_range;
 
-    // Dynamic range affects overall contrast
-    let contrast = 1.0 + uniforms.dynamic_range * 0.3;
+    // Safe dynamic range with pattern complexity control
+    let safe_dynamic_factor = uniforms.dynamic_range * uniforms.safety_pattern_complexity;
+    let contrast = 1.0 + safe_dynamic_factor * 0.15; // Reduced from 0.3
     color = pow(color, vec3<f32>(1.0 / contrast));
+
+    // Apply emergency stop override
+    color = color * uniforms.safety_emergency_stop;
+
+    // Emergency stop fallback: show dim gray
+    if (uniforms.safety_emergency_stop < 0.1) {
+        color = vec3<f32>(0.1, 0.1, 0.1);
+    }
 
     // Ensure color values stay in valid range
     color = clamp(color, vec3<f32>(0.0), vec3<f32>(1.0));

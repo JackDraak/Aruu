@@ -64,6 +64,14 @@ pub struct UniversalUniforms {
     pub smoothing_factor: f32,     // Global smoothing control
     pub resolution_x: f32,         // Screen width
     pub resolution_y: f32,         // Screen height
+
+    // Safety multipliers for epilepsy prevention
+    pub safety_beat_intensity: f32,      // Multiplier for beat-driven effects
+    pub safety_onset_intensity: f32,     // Multiplier for onset-driven effects
+    pub safety_color_change_rate: f32,   // Multiplier for color change rate
+    pub safety_brightness_range: f32,    // Multiplier for brightness range
+    pub safety_pattern_complexity: f32,  // Multiplier for pattern complexity
+    pub safety_emergency_stop: f32,      // 1.0 = normal, 0.0 = emergency stop
 }
 
 impl Default for UniversalUniforms {
@@ -123,6 +131,14 @@ impl Default for UniversalUniforms {
             smoothing_factor: 0.5,
             resolution_x: 1200.0,   // Default resolution
             resolution_y: 800.0,
+
+            // Safety multipliers (default to Safe level)
+            safety_beat_intensity: 0.3,      // Conservative beat response
+            safety_onset_intensity: 0.2,     // Conservative onset response
+            safety_color_change_rate: 0.4,   // Limit color changes
+            safety_brightness_range: 0.5,    // Limit brightness variations
+            safety_pattern_complexity: 0.5,  // Simplify patterns
+            safety_emergency_stop: 1.0,      // Normal operation
         }
     }
 }
@@ -374,7 +390,8 @@ impl UniformManager {
     pub fn map_audio_data(&self,
                          audio_features: &AudioFeatures,
                          rhythm_features: &RhythmFeatures,
-                         resolution: (u32, u32)) -> UniversalUniforms {
+                         resolution: (u32, u32),
+                         safety_multipliers: Option<crate::control::safety::SafetyMultipliers>) -> UniversalUniforms {
         let time = self.start_time.elapsed().as_secs_f32();
 
         UniversalUniforms {
@@ -412,6 +429,14 @@ impl UniformManager {
             // Resolution
             resolution_x: resolution.0 as f32,
             resolution_y: resolution.1 as f32,
+
+            // Apply safety multipliers if provided
+            safety_beat_intensity: safety_multipliers.map(|s| s.beat_intensity).unwrap_or(1.0),
+            safety_onset_intensity: safety_multipliers.map(|s| s.onset_intensity).unwrap_or(1.0),
+            safety_color_change_rate: safety_multipliers.map(|s| s.color_change_rate).unwrap_or(1.0),
+            safety_brightness_range: safety_multipliers.map(|s| s.brightness_range).unwrap_or(1.0),
+            safety_pattern_complexity: safety_multipliers.map(|s| s.pattern_complexity).unwrap_or(1.0),
+            safety_emergency_stop: safety_multipliers.map(|s| if s.beat_intensity == 0.0 { 0.0 } else { 1.0 }).unwrap_or(1.0),
 
             // Keep default values for other parameters
             ..UniversalUniforms::default()
@@ -617,7 +642,7 @@ impl ShaderSystem {
 
         // Update uniforms
         if let Some(ref uniform_buffer) = self.uniform_buffer {
-            let uniforms = self.uniform_manager.map_audio_data(audio_features, rhythm_features, self.resolution);
+            let uniforms = self.uniform_manager.map_audio_data(audio_features, rhythm_features, self.resolution, None);
             queue.write_buffer(uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
         }
 
@@ -671,11 +696,12 @@ impl ShaderSystem {
                                index_count: u32,
                                audio_features: &AudioFeatures,
                                rhythm_features: &RhythmFeatures,
-                               quality: QualityLevel) -> Result<()> {
+                               quality: QualityLevel,
+                               safety_multipliers: Option<crate::control::safety::SafetyMultipliers>) -> Result<()> {
 
         // Update uniforms with performance parameters
         if let Some(ref uniform_buffer) = self.uniform_buffer {
-            let mut uniforms = self.uniform_manager.map_audio_data(audio_features, rhythm_features, self.resolution);
+            let mut uniforms = self.uniform_manager.map_audio_data(audio_features, rhythm_features, self.resolution, safety_multipliers);
 
             // Apply quality scaling to audio parameters
             let quality_scale = quality.effect_intensity();

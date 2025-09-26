@@ -57,9 +57,17 @@ struct UniversalUniforms {
     projection_mode: f32,
     smoothing_factor: f32,
 
-    // Padding
-    _padding0: f32,
-    _padding1: f32,
+    // Resolution
+    resolution_x: f32,
+    resolution_y: f32,
+
+    // Safety multipliers for epilepsy prevention
+    safety_beat_intensity: f32,
+    safety_onset_intensity: f32,
+    safety_color_change_rate: f32,
+    safety_brightness_range: f32,
+    safety_pattern_complexity: f32,
+    safety_emergency_stop: f32,
 }
 
 @group(0) @binding(0)
@@ -93,7 +101,9 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
         uniforms.treble
     );
 
-    let time_scaled = uniforms.time * (1.0 + uniforms.overall_volume * 0.5);
+    // Safe time scaling with safety limits
+    let safe_volume_factor = uniforms.overall_volume * uniforms.safety_pattern_complexity;
+    let time_scaled = uniforms.time * (1.0 + safe_volume_factor * 0.3); // Reduced from 0.5 to 0.3
 
     // Enhanced wave patterns with radial distortion
     let radial_freq = distance_from_center * 12.0 * uniforms.frequency_scale;
@@ -149,14 +159,28 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
 
     let color = hsv_to_rgb(vec3<f32>(final_hue, final_saturation, final_brightness));
 
-    // Improved radial fade with bass response
-    let bass_boost = 1.0 + frequency_bands.x * 0.3;
-    let fade_distance = 0.9 * bass_boost;
+    // Safe radial fade with controlled bass response
+    let safe_bass_boost = 1.0 + frequency_bands.x * uniforms.safety_beat_intensity * 0.15; // Reduced from 0.3
+    let fade_distance = 0.9 * safe_bass_boost;
     let fade = 1.0 - smoothstep(fade_distance, fade_distance + 0.3, distance_from_center);
 
-    // Add center glow effect
-    let center_glow = exp(-distance_from_center * 2.0) * uniforms.overall_volume * 0.3;
-    let final_color = color * fade + vec3<f32>(center_glow);
+    // Safe center glow effect
+    let safe_center_glow = exp(-distance_from_center * 2.0) * uniforms.overall_volume * uniforms.safety_brightness_range * 0.2; // Reduced from 0.3
+    var final_color = color * fade + vec3<f32>(safe_center_glow);
+
+    // Apply overall safety brightness limits
+    final_color = final_color * uniforms.safety_brightness_range;
+
+    // Apply emergency stop override
+    final_color = final_color * uniforms.safety_emergency_stop;
+
+    // Emergency stop fallback: show dim gray
+    if (uniforms.safety_emergency_stop < 0.1) {
+        final_color = vec3<f32>(0.1, 0.1, 0.1);
+    }
+
+    // Ensure color values stay in valid range
+    final_color = clamp(final_color, vec3<f32>(0.0), vec3<f32>(1.0));
 
     return vec4<f32>(final_color, 1.0);
 }

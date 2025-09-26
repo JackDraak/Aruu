@@ -122,8 +122,9 @@ impl AudioVisualizer {
             self.frame_composer.auto_select_shader(&self.wgpu_context, &audio_features, &rhythm_features)?;
         }
 
-        // Render with enhanced composer
-        self.frame_composer.render(&self.wgpu_context, &audio_features, &rhythm_features)?;
+        // Render with enhanced composer and safety multipliers
+        let safety_multipliers = self.user_interface.get_safety_multipliers();
+        self.frame_composer.render(&self.wgpu_context, &audio_features, &rhythm_features, Some(safety_multipliers))?;
 
         // Display performance overlay if enabled
         if let Some(performance_text) = self.user_interface.get_performance_overlay(&self.frame_composer) {

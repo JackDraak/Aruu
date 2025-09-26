@@ -60,6 +60,14 @@ struct UniversalUniforms {
     // Resolution
     resolution_x: f32,
     resolution_y: f32,
+
+    // Safety multipliers for epilepsy prevention
+    safety_beat_intensity: f32,
+    safety_onset_intensity: f32,
+    safety_color_change_rate: f32,
+    safety_brightness_range: f32,
+    safety_pattern_complexity: f32,
+    safety_emergency_stop: f32,
 }
 
 @group(0) @binding(0)
@@ -115,16 +123,18 @@ fn generate_segment_pattern(uv: vec2<f32>) -> f32 {
     let treble_texture = sin(rotated_uv.x * (20.0 + uniforms.treble * 30.0)) *
                          cos(rotated_uv.y * (25.0 + uniforms.presence * 20.0));
 
-    // Beat-driven radial pulses
-    let beat_pulse = 1.0 + uniforms.beat_strength * sin(time * 8.0) * 0.5;
-    let radial_pulse = sin(radius * 10.0 * beat_pulse - time * 4.0);
+    // Safe beat-driven radial pulses
+    let safe_beat_strength = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_pulse = 1.0 + safe_beat_strength * sin(time * 4.0) * 0.25; // Reduced speed and intensity
+    let radial_pulse = sin(radius * 10.0 * beat_pulse - time * 2.0); // Reduced time multiplier
 
     // Pitch confidence creates harmonic patterns
     let harmonic_pattern = sin(angle * (4.0 + uniforms.pitch_confidence * 8.0)) *
                           cos(radius * (3.0 + uniforms.pitch_confidence * 6.0));
 
     // Onset strength creates sudden pattern shifts
-    let onset_shift = uniforms.onset_strength * sin(rotated_uv.x * 30.0 + time * 20.0) * 0.3;
+    let safe_onset_strength = uniforms.onset_strength * uniforms.safety_onset_intensity;
+    let onset_shift = safe_onset_strength * sin(rotated_uv.x * 15.0 + time * 10.0) * 0.15; // Reduced frequency and intensity
 
     // Combine all patterns
     var pattern = (bass_rings * 0.4 + mid_spirals * 0.3 + treble_texture * 0.2 +
@@ -169,8 +179,9 @@ fn get_kaleidoscope_color(pattern: f32, uv: vec2<f32>) -> vec3<f32> {
     let freq_blend = uniforms.spectral_flux * 0.4;
     color = mix(color, freq_color * brightness, freq_blend);
 
-    // Beat-driven brightness pulses
-    let beat_boost = 1.0 + uniforms.beat_strength * sin(uniforms.time * 6.0) * 0.3;
+    // Safe beat-driven brightness pulses
+    let safe_beat_brightness = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_boost = 1.0 + safe_beat_brightness * sin(uniforms.time * 3.0) * 0.15; // Reduced speed and intensity
     color = color * beat_boost;
 
     // Zero crossing rate affects color vibrancy
@@ -213,8 +224,20 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
     color = color * uniforms.color_intensity;
 
     // Spectral flux creates subtle shimmer
-    let shimmer = 1.0 + uniforms.spectral_flux * sin(uv.x * 50.0 + uniforms.time * 10.0) * 0.05;
+    let safe_flux_factor = uniforms.spectral_flux * uniforms.safety_pattern_complexity;
+    let shimmer = 1.0 + safe_flux_factor * sin(uv.x * 25.0 + uniforms.time * 5.0) * 0.025; // Reduced intensity and frequency
     color = color * shimmer;
+
+    // Apply safety brightness limits
+    color = color * uniforms.safety_brightness_range;
+
+    // Apply emergency stop override
+    color = color * uniforms.safety_emergency_stop;
+
+    // Emergency stop fallback: show dim gray
+    if (uniforms.safety_emergency_stop < 0.1) {
+        color = vec3<f32>(0.1, 0.1, 0.1);
+    }
 
     // Ensure color values stay in valid range
     color = clamp(color, vec3<f32>(0.0), vec3<f32>(1.0));

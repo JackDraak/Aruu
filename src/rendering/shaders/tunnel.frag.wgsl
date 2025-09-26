@@ -60,6 +60,14 @@ struct UniversalUniforms {
     // Resolution
     resolution_x: f32,
     resolution_y: f32,
+
+    // Safety multipliers for epilepsy prevention
+    safety_beat_intensity: f32,
+    safety_onset_intensity: f32,
+    safety_color_change_rate: f32,
+    safety_brightness_range: f32,
+    safety_pattern_complexity: f32,
+    safety_emergency_stop: f32,
 }
 
 @group(0) @binding(0)
@@ -90,7 +98,8 @@ fn tunnel_coordinates(uv: vec2<f32>) -> vec3<f32> {
     let depth = 1.0 / safe_radius * bass_depth_factor;
 
     // Beat-driven depth pulsing
-    let beat_pulse = 1.0 + uniforms.beat_strength * sin(uniforms.time * 8.0) * 0.3;
+    let safe_beat_strength = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_pulse = 1.0 + safe_beat_strength * sin(uniforms.time * 4.0) * 0.15; // Reduced speed and intensity
     let final_depth = depth * beat_pulse;
 
     return vec3<f32>(angle, final_depth, radius);
@@ -122,11 +131,13 @@ fn generate_tunnel_pattern(tunnel_coord: vec3<f32>) -> f32 {
                           sin(angle * (20.0 + uniforms.presence * 30.0)) * 0.5);
 
     // Beat-driven radial bursts
-    let burst_pattern = sin(angle * 4.0 + uniforms.beat_strength * 10.0) *
-                       exp(-radius * (2.0 - uniforms.beat_strength));
+    let safe_beat_burst = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let burst_pattern = sin(angle * 4.0 + safe_beat_burst * 5.0) * // Reduced multiplier
+                       exp(-radius * (2.0 - safe_beat_burst * 0.5)); // Reduced effect
 
     // Onset creates sudden depth shifts
-    let onset_shift = uniforms.onset_strength * sin(depth * 20.0 + time * 15.0) * 0.3;
+    let safe_onset_strength = uniforms.onset_strength * uniforms.safety_onset_intensity;
+    let onset_shift = safe_onset_strength * sin(depth * 10.0 + time * 7.0) * 0.15; // Reduced frequency and intensity
 
     // Pitch confidence creates harmonic tunnel segments
     let harmonic_segments = sin(depth * (3.0 + uniforms.pitch_confidence * 6.0)) *
@@ -187,7 +198,8 @@ fn get_tunnel_color(pattern: f32, tunnel_coord: vec3<f32>) -> vec3<f32> {
     color = mix(color, zone_color * brightness, zone_blend);
 
     // Beat-driven color flashes
-    let beat_flash = 1.0 + uniforms.beat_strength * sin(uniforms.time * 12.0) * 0.4;
+    let safe_beat_flash = uniforms.beat_strength * uniforms.safety_beat_intensity;
+    let beat_flash = 1.0 + safe_beat_flash * sin(uniforms.time * 6.0) * 0.2; // Reduced speed and intensity
     color = color * beat_flash;
 
     // Downbeat creates tunnel-wide color shifts
@@ -218,12 +230,21 @@ fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
     let vignette = 1.0 - smoothstep(0.8, 1.4, edge_distance);
     color = color * vignette;
 
-    // Zero crossing rate affects tunnel "roughness"
-    let roughness = 1.0 + uniforms.zero_crossing_rate * 0.2;
+    // Safe tunnel roughness with pattern complexity control
+    let safe_roughness_factor = uniforms.zero_crossing_rate * uniforms.safety_pattern_complexity;
+    let roughness = 1.0 + safe_roughness_factor * 0.1; // Reduced from 0.2
     color = pow(color, vec3<f32>(1.0 / roughness));
 
-    // Apply global intensity
-    color = color * uniforms.color_intensity;
+    // Apply safe global intensity
+    color = color * uniforms.color_intensity * uniforms.safety_brightness_range;
+
+    // Apply emergency stop override
+    color = color * uniforms.safety_emergency_stop;
+
+    // Emergency stop fallback: show dim gray
+    if (uniforms.safety_emergency_stop < 0.1) {
+        color = vec3<f32>(0.1, 0.1, 0.1);
+    }
 
     // Ensure color values stay in valid range
     color = clamp(color, vec3<f32>(0.0), vec3<f32>(1.0));
