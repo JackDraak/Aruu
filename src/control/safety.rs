@@ -83,9 +83,11 @@ pub struct FlashTracker {
 
 impl FlashTracker {
     pub fn new() -> Self {
+        // Initialize with past timestamps to allow first flash
+        let past_time = Instant::now() - std::time::Duration::from_secs(1);
         Self {
-            last_major_change: Instant::now(),
-            last_red_flash: Instant::now(),
+            last_major_change: past_time,
+            last_red_flash: past_time,
             recent_changes: Vec::new(),
             change_accumulator: 0.0,
         }
@@ -504,5 +506,226 @@ mod tests {
 
         let safe_color = engine.filter_color(Vector3::new(1.0, 0.0, 0.0));
         assert!(safe_color.x < 0.2); // Should be very dim in emergency
+    }
+
+    // ===== NEW COMPREHENSIVE SAFETY PIPELINE TESTS =====
+
+    #[test]
+    fn test_safety_multiplier_progression() {
+        let ultra_safe = SafetyMultipliers::ultra_safe();
+        let safe = SafetyMultipliers::safe();
+        let moderate = SafetyMultipliers::moderate();
+        let standard = SafetyMultipliers::standard();
+        let disabled = SafetyMultipliers::disabled();
+
+        // Validate progression: UltraSafe < Safe < Moderate < Standard < Disabled
+        assert!(ultra_safe.beat_intensity < safe.beat_intensity);
+        assert!(safe.beat_intensity < moderate.beat_intensity);
+        assert!(moderate.beat_intensity < standard.beat_intensity);
+        assert!(standard.beat_intensity < disabled.beat_intensity);
+
+        // Same for onset intensity
+        assert!(ultra_safe.onset_intensity < safe.onset_intensity);
+        assert!(safe.onset_intensity < moderate.onset_intensity);
+        assert!(moderate.onset_intensity < standard.onset_intensity);
+        assert!(standard.onset_intensity < disabled.onset_intensity);
+
+        // Validate disabled is full intensity (1.0)
+        assert_eq!(disabled.beat_intensity, 1.0);
+        assert_eq!(disabled.onset_intensity, 1.0);
+        assert_eq!(disabled.brightness_range, 1.0);
+
+        // Validate emergency stop is minimal
+        let emergency = SafetyMultipliers::emergency_stop();
+        assert_eq!(emergency.beat_intensity, 0.0);
+        assert_eq!(emergency.onset_intensity, 0.0);
+        assert_eq!(emergency.brightness_range, 0.1);
+    }
+
+    #[test]
+    fn test_safety_engine_level_transitions() {
+        let mut engine = SafetyEngine::new();
+
+        // Test each safety level produces correct multipliers
+        engine.set_safety_level(SafetyLevel::UltraSafe);
+        let ultra_multipliers = engine.get_safety_multipliers();
+        assert_eq!(ultra_multipliers.beat_intensity, 0.1);
+        assert_eq!(ultra_multipliers.onset_intensity, 0.05);
+
+        engine.set_safety_level(SafetyLevel::Safe);
+        let safe_multipliers = engine.get_safety_multipliers();
+        assert_eq!(safe_multipliers.beat_intensity, 0.3);
+        assert_eq!(safe_multipliers.onset_intensity, 0.2);
+
+        engine.set_safety_level(SafetyLevel::Standard);
+        let standard_multipliers = engine.get_safety_multipliers();
+        assert_eq!(standard_multipliers.beat_intensity, 0.8);
+        assert_eq!(standard_multipliers.onset_intensity, 0.6);
+
+        engine.set_safety_level(SafetyLevel::Disabled);
+        let disabled_multipliers = engine.get_safety_multipliers();
+        assert_eq!(disabled_multipliers.beat_intensity, 1.0);
+        assert_eq!(disabled_multipliers.onset_intensity, 1.0);
+    }
+
+    #[test]
+    fn test_emergency_stop_overrides_all_levels() {
+        let mut engine = SafetyEngine::new();
+
+        // Test emergency stop overrides all safety levels
+        let levels = [
+            SafetyLevel::UltraSafe,
+            SafetyLevel::Safe,
+            SafetyLevel::Moderate,
+            SafetyLevel::Standard,
+            SafetyLevel::Disabled,
+        ];
+
+        for level in levels {
+            engine.set_safety_level(level);
+            engine.emergency_stop();
+
+            let multipliers = engine.get_safety_multipliers();
+            assert_eq!(multipliers.beat_intensity, 0.0, "Emergency stop should override {:?}", level);
+            assert_eq!(multipliers.onset_intensity, 0.0, "Emergency stop should override {:?}", level);
+            assert_eq!(multipliers.brightness_range, 0.1, "Emergency stop should override {:?}", level);
+
+            engine.resume();
+        }
+    }
+
+    #[test]
+    fn test_safety_status_reporting() {
+        let mut engine = SafetyEngine::new();
+
+        // Test normal status reporting
+        let status = engine.get_safety_status();
+        assert_eq!(status.level, SafetyLevel::Safe); // Default level
+        assert!(!status.emergency_stopped);
+        assert!(status.warnings.is_empty());
+
+        // Test emergency stop status
+        engine.emergency_stop();
+        let emergency_status = engine.get_safety_status();
+        assert!(emergency_status.emergency_stopped);
+        assert!(!emergency_status.warnings.is_empty());
+
+        // Test status message
+        assert!(emergency_status.get_status_message().contains("EMERGENCY STOP"));
+
+        // Test resume clears warnings
+        engine.resume();
+        let resumed_status = engine.get_safety_status();
+        assert!(!resumed_status.emergency_stopped);
+        assert!(resumed_status.warnings.is_empty());
+    }
+
+    #[test]
+    fn test_red_flash_detection_and_limiting() {
+        let mut engine = SafetyEngine::new();
+
+        // Test red-dominant color detection and stricter limiting
+        let red_color = Vector3::new(1.0, 0.2, 0.2); // Strongly red
+        let normal_color = Vector3::new(0.5, 0.5, 0.5); // Neutral
+
+        // First red flash should be allowed (use higher intensity to trigger rate limiting)
+        // SafetyLevel::Safe multiplies by 0.5, so 0.8 * 0.5 = 0.4 > 0.3 threshold
+        assert!(engine.can_allow_effect(0.8, red_color));
+        engine.record_effect(0.8, red_color);
+
+        // Immediate second red flash should be blocked (stricter red flash limits)
+        assert!(!engine.can_allow_effect(0.8, red_color));
+
+        // But normal color might still be allowed with lower intensity
+        assert!(engine.can_allow_effect(0.2, normal_color));
+    }
+
+    #[test]
+    fn test_safety_multiplier_ranges_are_valid() {
+        let multipliers = [
+            SafetyMultipliers::ultra_safe(),
+            SafetyMultipliers::safe(),
+            SafetyMultipliers::moderate(),
+            SafetyMultipliers::standard(),
+            SafetyMultipliers::disabled(),
+            SafetyMultipliers::emergency_stop(),
+        ];
+
+        for multiplier in multipliers {
+            // All multipliers should be between 0.0 and 1.0
+            assert!(multiplier.beat_intensity >= 0.0 && multiplier.beat_intensity <= 1.0);
+            assert!(multiplier.onset_intensity >= 0.0 && multiplier.onset_intensity <= 1.0);
+            assert!(multiplier.color_change_rate >= 0.0 && multiplier.color_change_rate <= 1.0);
+            assert!(multiplier.brightness_range >= 0.0 && multiplier.brightness_range <= 1.0);
+            assert!(multiplier.pattern_complexity >= 0.0 && multiplier.pattern_complexity <= 1.0);
+        }
+    }
+
+    #[test]
+    fn test_luminance_calculation_accuracy() {
+        // Test ITU-R BT.709 luminance calculation
+        let white = Vector3::new(1.0, 1.0, 1.0);
+        let black = Vector3::new(0.0, 0.0, 0.0);
+        let pure_red = Vector3::new(1.0, 0.0, 0.0);
+        let pure_green = Vector3::new(0.0, 1.0, 0.0);
+        let pure_blue = Vector3::new(0.0, 0.0, 1.0);
+
+        // White should be 1.0, black should be 0.0
+        assert!((LuminanceLimiter::calculate_luminance(white) - 1.0).abs() < 0.001);
+        assert!((LuminanceLimiter::calculate_luminance(black) - 0.0).abs() < 0.001);
+
+        // Green should contribute most to luminance (0.7152)
+        let green_luminance = LuminanceLimiter::calculate_luminance(pure_green);
+        let red_luminance = LuminanceLimiter::calculate_luminance(pure_red);
+        let blue_luminance = LuminanceLimiter::calculate_luminance(pure_blue);
+
+        assert!(green_luminance > red_luminance);
+        assert!(green_luminance > blue_luminance);
+        assert!(red_luminance > blue_luminance);
+
+        // Verify actual values match ITU-R BT.709
+        assert!((red_luminance - 0.2126).abs() < 0.001);
+        assert!((green_luminance - 0.7152).abs() < 0.001);
+        assert!((blue_luminance - 0.0722).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_safety_integration_with_different_audio_intensities() {
+        let mut engine = SafetyEngine::new();
+        engine.set_safety_level(SafetyLevel::Safe);
+
+        // Test various audio intensity scenarios
+        let low_intensity = 0.1;
+        let medium_intensity = 0.5;
+        let high_intensity = 0.9;
+
+        // Low intensity should always be allowed
+        assert!(engine.can_allow_effect(low_intensity, Vector3::new(0.5, 0.5, 0.5)));
+
+        // High intensity should be more restricted
+        let can_allow_high = engine.can_allow_effect(high_intensity, Vector3::new(0.5, 0.5, 0.5));
+        engine.record_effect(high_intensity, Vector3::new(0.5, 0.5, 0.5));
+
+        // If first high intensity was allowed, second should be blocked
+        if can_allow_high {
+            assert!(!engine.can_allow_effect(high_intensity, Vector3::new(0.5, 0.5, 0.5)));
+        }
+    }
+
+    #[test]
+    fn test_vector3_operations() {
+        // Test Vector3 math operations used in safety calculations
+        let vec = Vector3::new(0.5, 0.3, 0.2);
+        let scalar = 0.8;
+
+        let result = vec * scalar;
+        assert!((result.x - 0.4).abs() < 0.001);
+        assert!((result.y - 0.24).abs() < 0.001);
+        assert!((result.z - 0.16).abs() < 0.001);
+
+        let result2 = vec.mul_scalar(scalar);
+        assert_eq!(result.x, result2.x);
+        assert_eq!(result.y, result2.y);
+        assert_eq!(result.z, result2.z);
     }
 }
