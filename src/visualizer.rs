@@ -58,7 +58,7 @@ impl AudioVisualizer {
         let target_fps = 60;
         let frame_duration = std::time::Duration::from_millis(1000 / target_fps);
 
-        event_loop.run(move |event, elwt| {
+        event_loop.run(move |event, elwt| { // ASSUMPTION: Keeping deprecated API for simplicity - requires major refactoring to fix
             match event {
                 Event::WindowEvent {
                     ref event,
@@ -195,7 +195,7 @@ mod tests {
         assert!(rhythm_features.estimated_bpm >= 0.0);
         assert!(rhythm_features.tempo_confidence >= 0.0);
         assert!(rhythm_features.rhythm_stability >= 0.0);
-        assert!(rhythm_features.beat_position >= 0);
+        // beat_position is u8 so >= 0 check is redundant
     }
 
     #[test]
@@ -221,7 +221,7 @@ mod tests {
 
     #[test]
     fn test_user_interface_integration() {
-        let mut user_interface = UserInterface::new();
+        let user_interface = UserInterface::new();
 
         // Test basic UI functions work
         assert!(user_interface.is_auto_shader_enabled()); // Default should be true
@@ -290,13 +290,13 @@ mod tests {
         assert!(rhythm_features.estimated_bpm.is_finite());
         assert!(rhythm_features.tempo_confidence.is_finite());
         assert!(rhythm_features.rhythm_stability.is_finite());
-        assert!(rhythm_features.beat_position <= 255);
+        // beat_position is u8 so <= 255 check is redundant
 
         // Verify features are in expected ranges
         assert!(rhythm_features.beat_strength >= 0.0 && rhythm_features.beat_strength <= 1.0);
         assert!(rhythm_features.tempo_confidence >= 0.0 && rhythm_features.tempo_confidence <= 1.0);
         assert!(rhythm_features.rhythm_stability >= 0.0 && rhythm_features.rhythm_stability <= 1.0);
-        assert!(rhythm_features.beat_position <= 255);
+        // beat_position is u8 so <= 255 check is redundant
         assert!(rhythm_features.estimated_bpm >= 60.0 && rhythm_features.estimated_bpm <= 200.0); // Reasonable BPM range
     }
 }

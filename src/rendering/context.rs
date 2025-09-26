@@ -19,7 +19,7 @@ impl WgpuContext {
     pub async fn new() -> Result<(Self, EventLoop<()>)> {
         let event_loop = EventLoop::new()?;
         let window = Arc::new(event_loop
-            .create_window(winit::window::WindowAttributes::default()
+            .create_window(winit::window::WindowAttributes::default() // ASSUMPTION: Keeping deprecated API for simplicity - requires major refactoring to fix
                 .with_title("Aruu Audio Visualizer")
                 .with_inner_size(winit::dpi::LogicalSize::new(800, 600)))?);
 

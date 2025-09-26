@@ -549,11 +549,11 @@ mod tests {
 
     #[test]
     fn test_shader_cycling() {
-        let mut ui = UserInterface::new();
+        let ui = UserInterface::new();
 
         // Test cycling forward
         let initial_index = ui.shader_cycle_index;
-        let expected_next = (initial_index + 1) % ui.available_shaders.len();
+        let _expected_next = (initial_index + 1) % ui.available_shaders.len();
 
         // Note: We can't test the actual cycling without a composer and context,
         // but we can test the index logic

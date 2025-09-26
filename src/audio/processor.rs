@@ -16,6 +16,7 @@ pub struct AudioProcessor {
     audio_buffer: Arc<Mutex<VecDeque<f32>>>,
     fft_analyzer: FftAnalyzer,
     advanced_analyzer: AdvancedAudioAnalyzer,
+    #[allow(dead_code)] // Used in tests
     sample_rate: f32,
 }
 
@@ -199,5 +200,44 @@ mod tests {
         let features = result.unwrap();
         assert_eq!(features.bass, 0.0);
         assert_eq!(features.overall_volume, 0.0);
+    }
+
+    #[test]
+    fn test_advanced_analyzer_overrides_hardcoded_values() {
+        // This test validates the ASSUMPTION that AdvancedAnalyzer properly calculates
+        // dynamic_range, spectral_flux, and zero_crossing_rate instead of leaving them at 0.0
+        let mut processor = AudioProcessor::new_default();
+
+        // Fill audio buffer with some test data to trigger calculations
+        {
+            let mut buffer = processor.audio_buffer.lock().unwrap();
+            // Generate a simple sine wave with varying amplitude to create dynamics
+            for i in 0..BUFFER_SIZE * 2 {
+                let sample = (i as f32 * 0.1).sin() * (0.5 + 0.5 * (i as f32 * 0.01).sin());
+                buffer.push_back(sample);
+            }
+        }
+
+        // Process a few frames to build up history for advanced analysis
+        for _ in 0..3 {
+            let _ = processor.process_frame();
+        }
+
+        let result = processor.process_frame();
+        assert!(result.is_ok());
+        let features = result.unwrap();
+
+        // These should NOT be 0.0 if AdvancedAnalyzer is working correctly
+        // Note: We don't test exact values since they depend on the algorithm,
+        // just that they're not the hardcoded 0.0 from AudioFeatures::from_frequency_bins
+        println!("dynamic_range: {}, spectral_flux: {}, zero_crossing_rate: {}",
+                features.dynamic_range, features.spectral_flux, features.zero_crossing_rate);
+
+        // At least one of these should be non-zero if the advanced analyzer is working
+        let has_advanced_features = features.dynamic_range > 0.0 ||
+                                   features.spectral_flux > 0.0 ||
+                                   features.zero_crossing_rate > 0.0;
+        assert!(has_advanced_features,
+               "AdvancedAnalyzer should override at least some hardcoded 0.0 values from features.rs");
     }
 }

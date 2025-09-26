@@ -696,7 +696,7 @@ mod tests {
 
         // Test various audio intensity scenarios
         let low_intensity = 0.1;
-        let medium_intensity = 0.5;
+        let _medium_intensity = 0.5;
         let high_intensity = 0.9;
 
         // Low intensity should always be allowed

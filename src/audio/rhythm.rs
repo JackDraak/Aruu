@@ -37,6 +37,7 @@ pub struct RhythmDetector {
     onset_times: VecDeque<f32>,
     last_energy: f32,
     frame_count: u64,
+    #[allow(dead_code)] // Used in tests
     sample_rate: f32,
     beat_counter: u8,
     last_beat_time: f32,
