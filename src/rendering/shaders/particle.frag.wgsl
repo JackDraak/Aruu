@@ -57,9 +57,9 @@ struct UniversalUniforms {
     projection_mode: f32,
     smoothing_factor: f32,
 
-    // Padding
-    _padding0: f32,
-    _padding1: f32,
+    // Resolution
+    resolution_x: f32,
+    resolution_y: f32,
 }
 
 @group(0) @binding(0)
@@ -220,7 +220,7 @@ fn get_particle_color(brightness: f32, uv: vec2<f32>) -> vec3<f32> {
 @fragment
 fn fs_main(in: FragmentInput) -> @location(0) vec4<f32> {
     // Normalize coordinates to screen center
-    let resolution = vec2<f32>(1200.0, 800.0); // TODO: Make this dynamic
+    let resolution = vec2<f32>(uniforms.resolution_x, uniforms.resolution_y);
     let uv = (in.tex_coords * 2.0 - 1.0) * vec2<f32>(resolution.x / resolution.y, 1.0);
 
     // Generate particle field brightness

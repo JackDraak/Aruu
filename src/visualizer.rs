@@ -1,9 +1,8 @@
-use crate::{AudioProcessor, FeatureMapper, RhythmDetector, RhythmFeatures};
+use crate::{AudioProcessor, FeatureMapper, RhythmDetector};
 use crate::rendering::{WgpuContext, FrameComposer};
-use crate::control::ShaderParameters;
 use winit::{
     event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
+    event_loop::EventLoop,
 };
 use std::time::Instant;
 use anyhow::Result;

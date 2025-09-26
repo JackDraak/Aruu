@@ -1,4 +1,3 @@
-use anyhow::Result;
 use std::time::{Duration, Instant};
 
 /// Performance quality levels for adaptive rendering

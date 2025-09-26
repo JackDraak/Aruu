@@ -62,9 +62,8 @@ pub struct UniversalUniforms {
     // System parameters
     pub projection_mode: f32,      // 0.0 = 2D, 1.0 = 3D perspective
     pub smoothing_factor: f32,     // Global smoothing control
-
-    // Padding to align to 16-byte boundaries
-    _padding: [f32; 2],
+    pub resolution_x: f32,         // Screen width
+    pub resolution_y: f32,         // Screen height
 }
 
 impl Default for UniversalUniforms {
@@ -122,8 +121,8 @@ impl Default for UniversalUniforms {
             // System parameters
             projection_mode: 0.0,
             smoothing_factor: 0.5,
-
-            _padding: [0.0; 2],
+            resolution_x: 1200.0,   // Default resolution
+            resolution_y: 800.0,
         }
     }
 }
@@ -374,7 +373,8 @@ impl UniformManager {
 
     pub fn map_audio_data(&self,
                          audio_features: &AudioFeatures,
-                         rhythm_features: &RhythmFeatures) -> UniversalUniforms {
+                         rhythm_features: &RhythmFeatures,
+                         resolution: (u32, u32)) -> UniversalUniforms {
         let time = self.start_time.elapsed().as_secs_f32();
 
         UniversalUniforms {
@@ -409,6 +409,10 @@ impl UniformManager {
             // Time
             time,
 
+            // Resolution
+            resolution_x: resolution.0 as f32,
+            resolution_y: resolution.1 as f32,
+
             // Keep default values for other parameters
             ..UniversalUniforms::default()
         }
@@ -424,6 +428,7 @@ pub struct ShaderSystem {
     uniform_buffer: Option<wgpu::Buffer>,
     bind_group: Option<wgpu::BindGroup>,
     bind_group_layout: wgpu::BindGroupLayout,
+    resolution: (u32, u32),
 }
 
 impl ShaderSystem {
@@ -457,6 +462,7 @@ impl ShaderSystem {
             uniform_buffer: None,
             bind_group: None,
             bind_group_layout,
+            resolution: (config.width, config.height),
         };
 
         // Build initial shader pipeline
@@ -476,6 +482,12 @@ impl ShaderSystem {
     }
 
     pub fn update(&mut self, device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Result<()> {
+        // Update resolution if changed
+        let new_resolution = (config.width, config.height);
+        if self.resolution != new_resolution {
+            self.resolution = new_resolution;
+        }
+
         let was_transitioning = self.transitioner.is_transitioning();
         self.transitioner.update();
 
@@ -605,7 +617,7 @@ impl ShaderSystem {
 
         // Update uniforms
         if let Some(ref uniform_buffer) = self.uniform_buffer {
-            let uniforms = self.uniform_manager.map_audio_data(audio_features, rhythm_features);
+            let uniforms = self.uniform_manager.map_audio_data(audio_features, rhythm_features, self.resolution);
             queue.write_buffer(uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
         }
 
@@ -663,7 +675,7 @@ impl ShaderSystem {
 
         // Update uniforms with performance parameters
         if let Some(ref uniform_buffer) = self.uniform_buffer {
-            let mut uniforms = self.uniform_manager.map_audio_data(audio_features, rhythm_features);
+            let mut uniforms = self.uniform_manager.map_audio_data(audio_features, rhythm_features, self.resolution);
 
             // Apply quality scaling to audio parameters
             let quality_scale = quality.effect_intensity();

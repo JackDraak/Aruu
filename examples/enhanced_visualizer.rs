@@ -18,6 +18,7 @@
 /// - H/F1: Help
 
 use aruu::*;
+use aruu::audio::AdvancedAudioAnalyzer;
 use aruu::control::UserInterface;
 use aruu::rendering::{EnhancedFrameComposer, WgpuContext};
 
@@ -39,6 +40,7 @@ struct EnhancedVisualizerApp {
     audio_processor: Option<AudioProcessor>,
     feature_mapper: FeatureMapper,
     rhythm_detector: RhythmDetector,
+    advanced_analyzer: AdvancedAudioAnalyzer,
 
     // User interface
     user_interface: UserInterface,
@@ -60,6 +62,7 @@ impl EnhancedVisualizerApp {
             audio_processor: None,
             feature_mapper: FeatureMapper::new(),
             rhythm_detector: RhythmDetector::new(44100.0), // Standard sample rate
+            advanced_analyzer: AdvancedAudioAnalyzer::new(44100.0),
             user_interface: UserInterface::new(),
             audio_receiver: None,
             last_frame: Instant::now(),
@@ -102,12 +105,13 @@ impl EnhancedVisualizerApp {
         // Process audio or use silence
         let samples = latest_samples.unwrap_or_else(|| vec![0.0; 1024]);
 
-        // Extract features
-        let audio_features = self.feature_mapper.extract_features(&samples);
+        // For this example, we'll use basic features (advanced features require FFT bins)
+        // In a real application, you would convert samples to frequency bins first
+        let audio_features = AudioFeatures::from_time_domain(&samples, 44100.0);
         let rhythm_features = self.rhythm_detector.analyze(&samples);
 
-        // Map and smooth features
-        self.feature_mapper.update_features(&audio_features, &rhythm_features);
+        // Map and smooth features (FeatureMapper is used for legacy shader parameters, not needed for new system)
+        let _shader_params = self.feature_mapper.map_features_with_rhythm(&audio_features, &rhythm_features);
 
         (audio_features, rhythm_features)
     }

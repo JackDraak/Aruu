@@ -53,7 +53,7 @@ impl AdvancedAudioAnalyzer {
         let mut flux = 0.0;
         let mut total_energy = 0.0;
 
-        for (i, (&current, &previous)) in current_spectrum.iter().zip(self.previous_spectrum.iter()).enumerate() {
+        for (_i, (&current, &previous)) in current_spectrum.iter().zip(self.previous_spectrum.iter()).enumerate() {
             // Calculate positive spectral difference (only increases in energy)
             let diff = (current - previous).max(0.0);
             flux += diff * diff;

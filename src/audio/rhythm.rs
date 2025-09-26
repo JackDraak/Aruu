@@ -186,7 +186,7 @@ impl RhythmDetector {
         } else {
             // Weight histogram result more heavily if we have good candidates
             let histogram_tempo = tempo_candidates[0]; // Best candidate
-            (histogram_tempo * 0.7 + autocorr_tempo * 0.3)
+            histogram_tempo * 0.7 + autocorr_tempo * 0.3
         };
 
         final_tempo.clamp(MIN_BPM, MAX_BPM)

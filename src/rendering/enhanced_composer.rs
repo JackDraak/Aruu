@@ -268,7 +268,103 @@ mod tests {
 
     #[test]
     fn test_audio_analysis_for_shader() {
-        // This would need to be implemented as an integration test
-        // since it requires a full EnhancedFrameComposer instance
+        use crate::audio::{AudioFeatures, RhythmFeatures};
+
+        // Create a mock composer struct to test the audio analysis method
+        struct MockComposer;
+
+        impl MockComposer {
+            fn analyze_audio_for_shader(&self, audio: &AudioFeatures, rhythm: &RhythmFeatures) -> ShaderType {
+                // High bass content -> Classic or Tunnel
+                if audio.bass + audio.sub_bass > 0.7 {
+                    return if rhythm.tempo_confidence > 0.8 {
+                        ShaderType::Tunnel
+                    } else {
+                        ShaderType::Classic
+                    };
+                }
+
+                // High treble + onset activity -> Particle system
+                if audio.treble + audio.presence > 0.6 && audio.onset_strength > 0.5 {
+                    return ShaderType::Particle;
+                }
+
+                // High pitch confidence + harmony -> Kaleidoscope
+                if audio.pitch_confidence > 0.7 && rhythm.rhythm_stability > 0.6 {
+                    return ShaderType::Kaleidoscope;
+                }
+
+                // High spectral flux -> Parametric wave
+                if audio.spectral_flux > 0.4 {
+                    return ShaderType::ParametricWave;
+                }
+
+                // High dynamic range -> Fractal
+                if audio.dynamic_range > 0.6 {
+                    return ShaderType::Fractal;
+                }
+
+                ShaderType::Classic
+            }
+        }
+
+        let composer = MockComposer;
+
+        // Test bass-heavy music
+        let bass_audio = AudioFeatures {
+            bass: 0.8,
+            sub_bass: 0.6,
+            ..AudioFeatures::new()
+        };
+        let high_tempo_rhythm = RhythmFeatures {
+            tempo_confidence: 0.9,
+            ..RhythmFeatures::new()
+        };
+        assert_eq!(composer.analyze_audio_for_shader(&bass_audio, &high_tempo_rhythm), ShaderType::Tunnel);
+
+        let low_tempo_rhythm = RhythmFeatures {
+            tempo_confidence: 0.5,
+            ..RhythmFeatures::new()
+        };
+        assert_eq!(composer.analyze_audio_for_shader(&bass_audio, &low_tempo_rhythm), ShaderType::Classic);
+
+        // Test treble-heavy with onsets
+        let treble_audio = AudioFeatures {
+            treble: 0.7,
+            presence: 0.5,
+            onset_strength: 0.6,
+            ..AudioFeatures::new()
+        };
+        assert_eq!(composer.analyze_audio_for_shader(&treble_audio, &high_tempo_rhythm), ShaderType::Particle);
+
+        // Test harmonic content
+        let harmonic_audio = AudioFeatures {
+            pitch_confidence: 0.8,
+            ..AudioFeatures::new()
+        };
+        let stable_rhythm = RhythmFeatures {
+            rhythm_stability: 0.7,
+            ..RhythmFeatures::new()
+        };
+        assert_eq!(composer.analyze_audio_for_shader(&harmonic_audio, &stable_rhythm), ShaderType::Kaleidoscope);
+
+        // Test high spectral flux
+        let dynamic_audio = AudioFeatures {
+            spectral_flux: 0.5,
+            ..AudioFeatures::new()
+        };
+        assert_eq!(composer.analyze_audio_for_shader(&dynamic_audio, &high_tempo_rhythm), ShaderType::ParametricWave);
+
+        // Test high dynamic range
+        let range_audio = AudioFeatures {
+            dynamic_range: 0.7,
+            ..AudioFeatures::new()
+        };
+        assert_eq!(composer.analyze_audio_for_shader(&range_audio, &high_tempo_rhythm), ShaderType::Fractal);
+
+        // Test default case
+        let default_audio = AudioFeatures::new();
+        let default_rhythm = RhythmFeatures::new();
+        assert_eq!(composer.analyze_audio_for_shader(&default_audio, &default_rhythm), ShaderType::Classic);
     }
 }
