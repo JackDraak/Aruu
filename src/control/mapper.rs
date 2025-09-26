@@ -184,15 +184,30 @@ mod tests {
         mapper.configure_smoothing("color_intensity", SmoothingType::linear(1.0));
 
         let features = AudioFeatures {
+            // 5-band frequency analysis
+            sub_bass: 0.1,
             bass: 0.5,
             mid: 0.3,
             treble: 0.2,
+            presence: 0.1,
+
+            // Volume and dynamics
             overall_volume: 0.4,
             signal_level_db: -12.0,  // Moderate level
             peak_level_db: -6.0,     // Peak level
+            dynamic_range: 0.3,
+
+            // Spectral characteristics
             spectral_centroid: 2000.0,
             spectral_rolloff: 8000.0,
+            spectral_flux: 0.2,
+
+            // Harmonic and pitch analysis
+            pitch_confidence: 0.5,
             zero_crossing_rate: 0.1,
+
+            // Transient detection
+            onset_strength: 0.3,
         };
 
         let params = mapper.map_features_to_parameters(&features);
@@ -216,29 +231,59 @@ mod tests {
         mapper.configure_smoothing("treble_response", SmoothingType::linear(0.5));
 
         let features1 = AudioFeatures {
+            // 5-band frequency analysis
+            sub_bass: 0.8,
             bass: 1.0,
             mid: 1.0,
             treble: 1.0,
+            presence: 0.9,
+
+            // Volume and dynamics
             overall_volume: 1.0,
             signal_level_db: -6.0,
             peak_level_db: -3.0,
+            dynamic_range: 0.8,
+
+            // Spectral characteristics
             spectral_centroid: 1000.0,
             spectral_rolloff: 5000.0,
+            spectral_flux: 0.4,
+
+            // Harmonic and pitch analysis
+            pitch_confidence: 0.7,
             zero_crossing_rate: 0.1,
+
+            // Transient detection
+            onset_strength: 0.6,
         };
 
         let _params1 = mapper.map_features_to_parameters(&features1);
 
         let features2 = AudioFeatures {
+            // 5-band frequency analysis
+            sub_bass: 0.0,
             bass: 0.0,
             mid: 0.0,
             treble: 0.0,
+            presence: 0.0,
+
+            // Volume and dynamics
             overall_volume: 0.0,
             signal_level_db: -40.0,  // Quiet
             peak_level_db: -30.0,
+            dynamic_range: 0.1,
+
+            // Spectral characteristics
             spectral_centroid: 2000.0,
             spectral_rolloff: 10000.0,
+            spectral_flux: 0.1,
+
+            // Harmonic and pitch analysis
+            pitch_confidence: 0.2,
             zero_crossing_rate: 0.2,
+
+            // Transient detection
+            onset_strength: 0.1,
         };
 
         let params2 = mapper.map_features_to_parameters(&features2);

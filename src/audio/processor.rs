@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
 use anyhow::{Result, anyhow};
 
-use super::{FftAnalyzer, AudioFeatures};
+use super::{FftAnalyzer, AudioFeatures, AdvancedAudioAnalyzer};
 
 const BUFFER_SIZE: usize = 1024;
 const SAMPLE_RATE: u32 = 44100;
@@ -15,6 +15,7 @@ pub struct AudioProcessor {
     sink: Option<Sink>,
     audio_buffer: Arc<Mutex<VecDeque<f32>>>,
     fft_analyzer: FftAnalyzer,
+    advanced_analyzer: AdvancedAudioAnalyzer,
     sample_rate: f32,
 }
 
@@ -42,6 +43,7 @@ impl AudioProcessor {
             sink: Some(sink),
             audio_buffer,
             fft_analyzer: FftAnalyzer::new(BUFFER_SIZE),
+            advanced_analyzer: AdvancedAudioAnalyzer::new(sample_rate),
             sample_rate,
         })
     }
@@ -53,6 +55,7 @@ impl AudioProcessor {
             sink: None,
             audio_buffer: Arc::new(Mutex::new(VecDeque::new())),
             fft_analyzer: FftAnalyzer::new(BUFFER_SIZE),
+            advanced_analyzer: AdvancedAudioAnalyzer::new(SAMPLE_RATE as f32),
             sample_rate: SAMPLE_RATE as f32,
         }
     }
@@ -120,7 +123,18 @@ impl AudioProcessor {
         }
 
         let frequency_bins = self.fft_analyzer.process_audio(&samples);
-        let features = AudioFeatures::from_frequency_bins(frequency_bins, self.sample_rate);
+
+        // Use advanced analyzer for full temporal analysis including spectral flux and dynamic range
+        let time_domain_samples = if samples.len() >= BUFFER_SIZE {
+            Some(&samples[..BUFFER_SIZE])
+        } else {
+            None
+        };
+
+        let features = self.advanced_analyzer.analyze_with_context(
+            frequency_bins,
+            time_domain_samples
+        );
 
         Ok(features)
     }
