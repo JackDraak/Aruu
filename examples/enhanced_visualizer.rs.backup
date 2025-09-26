@@ -75,16 +75,31 @@ impl EnhancedVisualizerApp {
         self.audio_receiver = Some(audio_rx);
 
         // Initialize audio processor in background thread
-        let mut processor = AudioProcessor::new(44100.0)?;
+        let mut processor = AudioProcessor::new()?;
 
         tokio::spawn(async move {
             loop {
-                if let Ok(samples) = processor.read_samples(1024).await {
-                    if !samples.is_empty() {
-                        let _ = audio_tx.send(samples);
+                // AudioProcessor doesn't expose raw samples directly
+                // Instead, we'll process audio features and simulate samples for the example
+                if let Ok(audio_features) = processor.process_frame() {
+                    // Generate synthetic samples based on audio features for visualization
+                    let mut samples = vec![0.0; 1024];
+                    let time = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs_f32();
+
+                    // Create synthetic waveform based on audio features
+                    for (i, sample) in samples.iter_mut().enumerate() {
+                        let t = time + i as f32 * 0.001;
+                        *sample = audio_features.bass * (t * 100.0).sin() * 0.3 +
+                                 audio_features.mid * (t * 400.0).sin() * 0.2 +
+                                 audio_features.treble * (t * 1600.0).sin() * 0.1;
                     }
+
+                    let _ = audio_tx.send(samples);
                 }
-                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(16)).await; // ~60fps
             }
         });
 
@@ -107,8 +122,8 @@ impl EnhancedVisualizerApp {
 
         // For this example, we'll use basic features (advanced features require FFT bins)
         // In a real application, you would convert samples to frequency bins first
-        let audio_features = AudioFeatures::from_time_domain(&samples, 44100.0);
-        let rhythm_features = self.rhythm_detector.analyze(&samples);
+        let audio_features = AudioFeatures::from_frequency_bins(&samples, 44100.0);
+        let rhythm_features = self.rhythm_detector.process_frame(&samples);
 
         // Map and smooth features (FeatureMapper is used for legacy shader parameters, not needed for new system)
         let _shader_params = self.feature_mapper.map_features_with_rhythm(&audio_features, &rhythm_features);
@@ -166,8 +181,8 @@ impl ApplicationHandler for EnhancedVisualizerApp {
             match event_loop.create_window(window_attributes) {
                 Ok(window) => {
                     // Initialize graphics context
-                    match pollster::block_on(WgpuContext::new(&window)) {
-                        Ok(context) => {
+                    match pollster::block_on(WgpuContext::new()) {
+                        Ok((context, _event_loop)) => {
                             // Initialize enhanced frame composer
                             match EnhancedFrameComposer::new(&context) {
                                 Ok(composer) => {

@@ -61,18 +61,45 @@ impl WgpuContext {
             .copied()
             .unwrap_or(surface_caps.formats[0]);
 
+        // Select present mode with preference for V-sync (60 FPS cap)
+        let present_mode = surface_caps
+            .present_modes
+            .iter()
+            .copied()
+            .find(|&mode| mode == wgpu::PresentMode::Fifo)
+            .or_else(|| {
+                // Fallback hierarchy for V-sync-like behavior
+                surface_caps
+                    .present_modes
+                    .iter()
+                    .copied()
+                    .find(|&mode| mode == wgpu::PresentMode::FifoRelaxed)
+            })
+            .unwrap_or(surface_caps.present_modes[0]);
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width,
             height: size.height,
-            present_mode: surface_caps.present_modes[0],
+            present_mode,
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
 
         surface.configure(&device, &config);
+
+        // Log the selected present mode for verification
+        let mode_name = match present_mode {
+            wgpu::PresentMode::Fifo => "Fifo (V-sync, 60 FPS)",
+            wgpu::PresentMode::FifoRelaxed => "FifoRelaxed (Adaptive V-sync)",
+            wgpu::PresentMode::Immediate => "Immediate (Unlimited FPS)",
+            wgpu::PresentMode::Mailbox => "Mailbox (Triple buffering)",
+            wgpu::PresentMode::AutoVsync => "AutoVsync",
+            wgpu::PresentMode::AutoNoVsync => "AutoNoVsync",
+        };
+        println!("🖥️  Present mode: {}", mode_name);
 
         let context = Self {
             surface,

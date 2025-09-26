@@ -1,5 +1,6 @@
-use crate::{AudioProcessor, FeatureMapper, RhythmDetector};
-use crate::rendering::{WgpuContext, FrameComposer};
+use crate::{AudioProcessor, RhythmDetector};
+use crate::rendering::{WgpuContext, EnhancedFrameComposer};
+use crate::control::UserInterface;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
@@ -9,10 +10,10 @@ use anyhow::Result;
 
 pub struct AudioVisualizer {
     audio_processor: AudioProcessor,
-    feature_mapper: FeatureMapper,
     rhythm_detector: RhythmDetector,
     wgpu_context: WgpuContext,
-    frame_composer: FrameComposer,
+    frame_composer: EnhancedFrameComposer,
+    user_interface: UserInterface,
 }
 
 impl AudioVisualizer {
@@ -31,11 +32,11 @@ impl AudioVisualizer {
             }
         };
 
-        let feature_mapper = FeatureMapper::new();
         let rhythm_detector = RhythmDetector::new(44100.0);
 
         let (wgpu_context, event_loop) = WgpuContext::new().await?;
-        let frame_composer = FrameComposer::new(&wgpu_context)?;
+        let frame_composer = EnhancedFrameComposer::new(&wgpu_context)?;
+        let user_interface = UserInterface::new();
 
         println!("✅ WGPU context and rendering pipeline initialized");
         println!("🚀 Audio Visualizer ready!");
@@ -43,10 +44,10 @@ impl AudioVisualizer {
         Ok((
             Self {
                 audio_processor,
-                feature_mapper,
                 rhythm_detector,
                 wgpu_context,
                 frame_composer,
+                user_interface,
             },
             event_loop,
         ))
@@ -79,6 +80,17 @@ impl AudioVisualizer {
                             }
                         }
                     }
+                    WindowEvent::KeyboardInput { event, .. } => {
+                        match self.user_interface.handle_keyboard_input(event, &mut self.frame_composer, &self.wgpu_context) {
+                            Ok(handled) => {
+                                if handled {
+                                    // Display updated status
+                                    println!("{}", self.user_interface.get_status_text(&self.frame_composer));
+                                }
+                            }
+                            Err(e) => eprintln!("Keyboard input error: {}", e),
+                        }
+                    }
                     _ => {}
                 }
                 Event::AboutToWait => {
@@ -92,6 +104,7 @@ impl AudioVisualizer {
     }
 
     fn render_frame(&mut self) -> Result<()> {
+        // Process audio with enhanced features (includes AdvancedAudioAnalyzer internally)
         let audio_features = self.audio_processor.process_frame()?;
 
         let frequency_bins = vec![
@@ -101,14 +114,31 @@ impl AudioVisualizer {
             audio_features.overall_volume,
         ];
 
+        // Enhanced rhythm analysis
         let rhythm_features = self.rhythm_detector.process_frame(&frequency_bins);
 
-        let enhanced_parameters = self.feature_mapper.map_features_with_rhythm(&audio_features, &rhythm_features);
+        // Auto-select shader based on audio characteristics if enabled
+        if self.user_interface.is_auto_shader_enabled() {
+            self.frame_composer.auto_select_shader(&self.wgpu_context, &audio_features, &rhythm_features)?;
+        }
 
-        self.frame_composer.render(&self.wgpu_context, &enhanced_parameters)?;
+        // Render with enhanced composer
+        self.frame_composer.render(&self.wgpu_context, &audio_features, &rhythm_features)?;
+
+        // Display performance overlay if enabled
+        if let Some(performance_text) = self.user_interface.get_performance_overlay(&self.frame_composer) {
+            static mut FRAME_COUNTER: u32 = 0;
+            unsafe {
+                FRAME_COUNTER += 1;
+                if FRAME_COUNTER % 60 == 0 { // Display every 60 frames (once per second at 60fps)
+                    println!("{}", performance_text);
+                }
+            }
+        }
 
         Ok(())
     }
+
 
     pub fn load_audio_file(&mut self, file_path: &str) -> Result<()> {
         self.audio_processor.play_from_file(file_path)
