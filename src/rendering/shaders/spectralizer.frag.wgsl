@@ -79,23 +79,36 @@ fn hsv_to_rgb(hsv: vec3<f32>) -> vec3<f32> {
 
 // Simulate frequency spectrum display
 fn get_frequency_bar_height(freq_position: f32) -> f32 {
-    // Map horizontal position to frequency bands
-    let freq_bands = array<f32, 5>(
-        uniforms.sub_bass,
-        uniforms.bass,
-        uniforms.mid,
-        uniforms.treble,
-        uniforms.presence
-    );
-
     // Determine which frequency band we're in
-    let band_index = clamp(floor(freq_position * 5.0), 0.0, 4.0);
-    let band_fraction = fract(freq_position * 5.0);
+    let band_position = freq_position * 5.0;
+    let band_index = clamp(floor(band_position), 0.0, 4.0);
+    let band_fraction = fract(band_position);
 
-    // Get current and next band values for smooth interpolation
-    let current_band = freq_bands[i32(band_index)];
-    let next_band_index = min(i32(band_index) + 1, 4);
-    let next_band = freq_bands[next_band_index];
+    // Get current and next band values using conditional logic instead of array indexing
+    var current_band: f32;
+    var next_band: f32;
+
+    if (band_index < 0.5) {
+        // Band 0: sub_bass
+        current_band = uniforms.sub_bass;
+        next_band = uniforms.bass;
+    } else if (band_index < 1.5) {
+        // Band 1: bass
+        current_band = uniforms.bass;
+        next_band = uniforms.mid;
+    } else if (band_index < 2.5) {
+        // Band 2: mid
+        current_band = uniforms.mid;
+        next_band = uniforms.treble;
+    } else if (band_index < 3.5) {
+        // Band 3: treble
+        current_band = uniforms.treble;
+        next_band = uniforms.presence;
+    } else {
+        // Band 4: presence
+        current_band = uniforms.presence;
+        next_band = uniforms.presence; // No next band, use same
+    }
 
     // Interpolate between bands for smooth transitions
     let interpolated_height = mix(current_band, next_band, band_fraction);
@@ -193,7 +206,7 @@ fn generate_circular_spectrum(uv: vec2<f32>) -> f32 {
 
     // Create circular bars
     let ring_thickness = 0.05;
-    let ring_intensity = 1.0 - smoothstep(target_radius - ring_thickness, target_radius, radius);
+    var ring_intensity = 1.0 - smoothstep(target_radius - ring_thickness, target_radius, radius);
     ring_intensity *= smoothstep(target_radius - ring_thickness * 3.0, target_radius - ring_thickness, radius);
 
     // Add radial segments for visual separation

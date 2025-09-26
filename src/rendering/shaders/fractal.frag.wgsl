@@ -133,7 +133,7 @@ fn mandelbrot_fractal(uv: vec2<f32>) -> f32 {
     }
 
     // Smooth iteration count for better gradients
-    let smooth_iter = iteration;
+    var smooth_iter = iteration;
     if (complex_magnitude_sq(z) <= 4.0) {
         smooth_iter = dynamic_max_iter;
     } else {
