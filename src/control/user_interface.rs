@@ -27,6 +27,12 @@ pub struct UserInterface {
     current_safety_level: SafetyLevel,
     /// Show safety status in overlay
     pub show_safety_status: bool,
+    /// ESC key press tracking for double-press exit
+    esc_press_count: u32,
+    /// Time of last ESC press for double-press detection
+    last_esc_time: std::time::Instant,
+    /// Flag to signal application should exit
+    should_exit: bool,
 }
 
 impl UserInterface {
@@ -51,6 +57,9 @@ impl UserInterface {
             epilepsy_warning: EpilepsyWarning::new(),
             current_safety_level: SafetyLevel::Safe, // Default to safe
             show_safety_status: true, // Show safety status by default
+            esc_press_count: 0,
+            last_esc_time: std::time::Instant::now(),
+            should_exit: false,
         }
     }
 
@@ -157,9 +166,25 @@ impl UserInterface {
                     handled = true;
                 }
 
-                // Emergency stop (ESC key) - Critical safety feature
+                // Emergency stop (ESC key) - Critical safety feature with double-press exit
                 KeyCode::Escape => {
-                    self.emergency_stop();
+                    let now = std::time::Instant::now();
+                    let time_since_last_esc = now.duration_since(self.last_esc_time).as_secs_f32();
+
+                    if time_since_last_esc <= 2.0 {
+                        // Second ESC within 2 seconds - signal exit
+                        self.esc_press_count += 1;
+                        if self.esc_press_count >= 2 {
+                            self.should_exit = true;
+                            println!("🚪 Exiting Aruu Audio Visualizer...");
+                        }
+                    } else {
+                        // First ESC or too much time passed - reset and do emergency stop
+                        self.esc_press_count = 1;
+                        self.emergency_stop();
+                    }
+
+                    self.last_esc_time = now;
                     handled = true;
                 }
 
@@ -196,7 +221,7 @@ impl UserInterface {
         context: &crate::rendering::WgpuContext,
     ) -> Result<()> {
         self.auto_shader_enabled = false;
-        composer.set_shader(shader_type, context)?;
+        composer.set_shader_immediately(shader_type, context)?;
 
         // Update cycle index to match current shader
         if let Some(index) = self.available_shaders.iter().position(|&s| s == shader_type) {
@@ -217,7 +242,7 @@ impl UserInterface {
         self.shader_cycle_index = (self.shader_cycle_index + 1) % self.available_shaders.len();
         let next_shader = self.available_shaders[self.shader_cycle_index];
 
-        composer.set_shader(next_shader, context)?;
+        composer.set_shader_immediately(next_shader, context)?;
         println!("🔄 Next shader: {} (auto mode disabled)", next_shader.name());
         Ok(())
     }
@@ -236,7 +261,7 @@ impl UserInterface {
         };
         let prev_shader = self.available_shaders[self.shader_cycle_index];
 
-        composer.set_shader(prev_shader, context)?;
+        composer.set_shader_immediately(prev_shader, context)?;
         println!("🔄 Previous shader: {} (auto mode disabled)", prev_shader.name());
         Ok(())
     }
@@ -434,6 +459,11 @@ impl UserInterface {
     /// Check if emergency stop is active
     pub fn is_emergency_stopped(&self) -> bool {
         self.safety_engine.is_emergency_stopped()
+    }
+
+    /// Check if application should exit (double ESC press detected)
+    pub fn should_exit(&self) -> bool {
+        self.should_exit
     }
 
     /// Get current safety multipliers for shaders

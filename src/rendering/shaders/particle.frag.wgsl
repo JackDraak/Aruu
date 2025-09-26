@@ -207,11 +207,20 @@ fn get_particle_color(brightness: f32, uv: vec2<f32>) -> vec3<f32> {
     let freq_color = bass_color + mid_color + treble_color + presence_color;
     let normalized_freq_color = normalize(freq_color + vec3<f32>(0.1));
 
-    // HSV color generation
-    let saturation = uniforms.saturation * (0.7 + uniforms.pitch_confidence * 0.3);
+    // HSV color generation with audio-driven desaturation
+    // Base saturation influenced by pitch confidence
+    let base_saturation = uniforms.saturation * (0.7 + uniforms.pitch_confidence * 0.3);
+
+    // Volume-based desaturation: reduce saturation when audio is quiet
+    // When overall_volume < 0.1: heavily desaturate (grayscale)
+    // When overall_volume 0.1-0.3: gradually reduce saturation
+    // When overall_volume > 0.3: full saturation
+    let volume_saturation_factor = smoothstep(0.0, 0.4, uniforms.overall_volume);
+    let final_saturation = base_saturation * volume_saturation_factor;
+
     let hsv_brightness = uniforms.overall_volume * brightness;
 
-    var color = hsv_to_rgb(vec3<f32>(fract(particle_hue), saturation, hsv_brightness));
+    var color = hsv_to_rgb(vec3<f32>(fract(particle_hue), final_saturation, hsv_brightness));
 
     // Blend with frequency-based color
     let freq_blend = uniforms.spectral_flux * 0.6;

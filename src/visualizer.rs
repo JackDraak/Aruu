@@ -87,6 +87,12 @@ impl AudioVisualizer {
                                     // Display updated status
                                     println!("{}", self.user_interface.get_status_text(&self.frame_composer));
                                 }
+
+                                // Check for exit condition (double ESC press)
+                                if self.user_interface.should_exit() {
+                                    println!("👋 Closing Aruu Audio Visualizer");
+                                    elwt.exit();
+                                }
                             }
                             Err(e) => eprintln!("Keyboard input error: {}", e),
                         }
@@ -149,5 +155,148 @@ impl AudioVisualizer {
 impl Drop for AudioVisualizer {
     fn drop(&mut self) {
         println!("🛑 Audio Visualizer shutting down");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Integration test for the core audio processing pipeline
+    #[test]
+    fn test_audio_processing_pipeline() {
+        // Use default processor for testing (no audio device required)
+        let mut audio_processor = AudioProcessor::new_default();
+        let mut rhythm_detector = RhythmDetector::new(44100.0);
+
+        // Process a frame to ensure pipeline works
+        let audio_features = audio_processor.process_frame().expect("Audio processing should work");
+
+        // Verify audio features are generated
+        assert!(audio_features.sub_bass >= 0.0);
+        assert!(audio_features.bass >= 0.0);
+        assert!(audio_features.mid >= 0.0);
+        assert!(audio_features.treble >= 0.0);
+        assert!(audio_features.presence >= 0.0);
+        assert!(audio_features.overall_volume >= 0.0);
+
+        // Test rhythm processing with audio features
+        let frequency_bins = vec![
+            audio_features.bass,
+            audio_features.mid,
+            audio_features.treble,
+            audio_features.overall_volume,
+        ];
+
+        let rhythm_features = rhythm_detector.process_frame(&frequency_bins);
+
+        // Verify rhythm features are generated
+        assert!(rhythm_features.beat_strength >= 0.0);
+        assert!(rhythm_features.estimated_bpm >= 0.0);
+        assert!(rhythm_features.tempo_confidence >= 0.0);
+        assert!(rhythm_features.rhythm_stability >= 0.0);
+        assert!(rhythm_features.beat_position >= 0);
+    }
+
+    #[test]
+    fn test_multiple_frame_processing() {
+        let mut audio_processor = AudioProcessor::new_default();
+        let mut rhythm_detector = RhythmDetector::new(44100.0);
+
+        // Process multiple frames to ensure stability
+        for _ in 0..10 {
+            let audio_features = audio_processor.process_frame().expect("Audio processing should work");
+
+            let frequency_bins = vec![
+                audio_features.bass,
+                audio_features.mid,
+                audio_features.treble,
+                audio_features.overall_volume,
+            ];
+
+            let _rhythm_features = rhythm_detector.process_frame(&frequency_bins);
+            // Should not panic or fail
+        }
+    }
+
+    #[test]
+    fn test_user_interface_integration() {
+        let mut user_interface = UserInterface::new();
+
+        // Test basic UI functions work
+        assert!(user_interface.is_auto_shader_enabled()); // Default should be true
+        assert!(!user_interface.is_emergency_stopped()); // Should not start in emergency stop
+
+        // Test safety multipliers are accessible
+        let safety_multipliers = user_interface.get_safety_multipliers();
+
+        // Default should allow normal operation
+        assert!(safety_multipliers.beat_intensity > 0.0);
+        assert!(safety_multipliers.onset_intensity > 0.0);
+        assert!(safety_multipliers.brightness_range > 0.0);
+    }
+
+    #[test]
+    fn test_audio_file_loading() {
+        let mut audio_processor = AudioProcessor::new_default();
+
+        // Test that loading a non-existent file fails gracefully
+        let result = audio_processor.play_from_file("nonexistent_file.wav");
+
+        // Should return an error but not panic
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_audio_features_validity() {
+        let mut audio_processor = AudioProcessor::new_default();
+
+        let audio_features = audio_processor.process_frame().expect("Should process frame");
+
+        // Verify all audio features are valid numbers (not NaN or infinite)
+        assert!(audio_features.sub_bass.is_finite());
+        assert!(audio_features.bass.is_finite());
+        assert!(audio_features.mid.is_finite());
+        assert!(audio_features.treble.is_finite());
+        assert!(audio_features.presence.is_finite());
+        assert!(audio_features.overall_volume.is_finite());
+        assert!(audio_features.dynamic_range.is_finite());
+        assert!(audio_features.spectral_centroid.is_finite());
+        assert!(audio_features.spectral_rolloff.is_finite());
+        assert!(audio_features.spectral_flux.is_finite());
+        assert!(audio_features.pitch_confidence.is_finite());
+        assert!(audio_features.zero_crossing_rate.is_finite());
+        assert!(audio_features.onset_strength.is_finite());
+
+        // Verify features are in expected ranges
+        assert!(audio_features.sub_bass >= 0.0 && audio_features.sub_bass <= 1.0);
+        assert!(audio_features.bass >= 0.0 && audio_features.bass <= 1.0);
+        assert!(audio_features.mid >= 0.0 && audio_features.mid <= 1.0);
+        assert!(audio_features.treble >= 0.0 && audio_features.treble <= 1.0);
+        assert!(audio_features.presence >= 0.0 && audio_features.presence <= 1.0);
+        assert!(audio_features.overall_volume >= 0.0 && audio_features.overall_volume <= 1.0);
+    }
+
+    #[test]
+    fn test_rhythm_features_validity() {
+        let mut rhythm_detector = RhythmDetector::new(44100.0);
+
+        // Test with various frequency patterns
+        let test_bins = vec![0.5, 0.3, 0.2, 0.8];
+        let rhythm_features = rhythm_detector.process_frame(&test_bins);
+
+        // Verify all rhythm features are valid numbers
+        assert!(rhythm_features.beat_strength.is_finite());
+        assert!(rhythm_features.estimated_bpm.is_finite());
+        assert!(rhythm_features.tempo_confidence.is_finite());
+        assert!(rhythm_features.rhythm_stability.is_finite());
+        assert!(rhythm_features.beat_position <= 255);
+
+        // Verify features are in expected ranges
+        assert!(rhythm_features.beat_strength >= 0.0 && rhythm_features.beat_strength <= 1.0);
+        assert!(rhythm_features.tempo_confidence >= 0.0 && rhythm_features.tempo_confidence <= 1.0);
+        assert!(rhythm_features.rhythm_stability >= 0.0 && rhythm_features.rhythm_stability <= 1.0);
+        assert!(rhythm_features.beat_position <= 255);
+        assert!(rhythm_features.estimated_bpm >= 60.0 && rhythm_features.estimated_bpm <= 200.0); // Reasonable BPM range
     }
 }

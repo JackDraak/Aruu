@@ -41,6 +41,8 @@ pub struct EnhancedFrameComposer {
     index_buffer: wgpu::Buffer,
     performance_manager: PerformanceManager,
     frame_start_time: Option<Instant>,
+    last_auto_shader_switch: Instant,
+    auto_shader_cooldown: std::time::Duration,
 }
 
 impl EnhancedFrameComposer {
@@ -72,6 +74,8 @@ impl EnhancedFrameComposer {
             index_buffer,
             performance_manager: PerformanceManager::new(60.0), // Target 60 FPS
             frame_start_time: None,
+            last_auto_shader_switch: Instant::now(),
+            auto_shader_cooldown: std::time::Duration::from_millis(2500), // 2.5 seconds between switches
         })
     }
 
@@ -83,6 +87,14 @@ impl EnhancedFrameComposer {
         rhythm_features: &RhythmFeatures,
         safety_multipliers: Option<crate::control::safety::SafetyMultipliers>,
     ) -> Result<()> {
+        // Check for emergency stop - if active, render black screen instead of shaders
+        if let Some(ref multipliers) = safety_multipliers {
+            if multipliers.beat_intensity == 0.0 && multipliers.brightness_range <= 0.1 {
+                // Emergency stop is active - render solid black screen
+                return self.render_emergency_blackout(context);
+            }
+        }
+
         // Start frame timing
         let frame_start = Instant::now();
         self.frame_start_time = Some(frame_start);
@@ -139,6 +151,11 @@ impl EnhancedFrameComposer {
         self.shader_system.set_shader(shader_type, &context.device, &context.config)
     }
 
+    /// Set shader immediately without transition animation (for manual user input)
+    pub fn set_shader_immediately(&mut self, shader_type: ShaderType, context: &WgpuContext) -> Result<()> {
+        self.shader_system.set_shader_immediately(shader_type, &context.device, &context.config)
+    }
+
     /// Get the currently active shader
     pub fn current_shader(&self) -> ShaderType {
         self.shader_system.current_shader()
@@ -181,8 +198,16 @@ impl EnhancedFrameComposer {
         let recommended_shader = self.analyze_audio_for_shader(audio_features, rhythm_features);
 
         if recommended_shader != current {
-            println!("🤖 Auto-selecting shader: {} (based on audio analysis)", recommended_shader.name());
-            self.set_shader(recommended_shader, context)?;
+            // Check cooldown to prevent rapid switching and console spam
+            let now = Instant::now();
+            let time_since_last_switch = now.duration_since(self.last_auto_shader_switch);
+
+            if time_since_last_switch >= self.auto_shader_cooldown {
+                println!("🤖 Auto-selecting shader: {} (based on audio analysis)", recommended_shader.name());
+                self.set_shader(recommended_shader, context)?;
+                self.last_auto_shader_switch = now;
+            }
+            // If within cooldown, silently continue with current shader
         }
 
         Ok(())
@@ -206,6 +231,43 @@ impl EnhancedFrameComposer {
     /// Get average FPS over recent history
     pub fn average_fps(&self) -> f32 {
         self.performance_manager.average_fps()
+    }
+
+    /// Render solid black screen for emergency stop
+    fn render_emergency_blackout(&mut self, context: &WgpuContext) -> Result<()> {
+        // Get surface texture
+        let output = context.get_current_texture()?;
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Create command encoder for clear operation
+        let mut encoder = context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("emergency_blackout_encoder"),
+        });
+
+        {
+            // Create render pass that clears to black
+            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("emergency_blackout_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), // Solid black
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+            // Render pass automatically clears to black, no drawing needed
+        }
+
+        // Submit commands and present
+        context.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+
+        Ok(())
     }
 
     fn analyze_audio_for_shader(&self, audio: &AudioFeatures, rhythm: &RhythmFeatures) -> ShaderType {

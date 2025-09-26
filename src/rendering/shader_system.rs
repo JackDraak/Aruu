@@ -344,6 +344,16 @@ impl ShaderTransitioner {
         }
     }
 
+    /// Immediately switch to target shader without animation (for manual user input)
+    pub fn switch_immediately_to(&mut self, target: ShaderType) {
+        if target != self.current_shader {
+            self.current_shader = target;
+            self.target_shader = None;
+            self.transition_progress = 1.0;
+            self.last_update = std::time::Instant::now();
+        }
+    }
+
     pub fn update(&mut self) {
         if let Some(_target) = self.target_shader {
             let now = std::time::Instant::now();
@@ -391,7 +401,8 @@ impl UniformManager {
                          audio_features: &AudioFeatures,
                          rhythm_features: &RhythmFeatures,
                          resolution: (u32, u32),
-                         safety_multipliers: Option<crate::control::safety::SafetyMultipliers>) -> UniversalUniforms {
+                         safety_multipliers: Option<crate::control::safety::SafetyMultipliers>,
+                         transition_progress: f32) -> UniversalUniforms {
         let time = self.start_time.elapsed().as_secs_f32();
 
         UniversalUniforms {
@@ -437,6 +448,9 @@ impl UniformManager {
             safety_brightness_range: safety_multipliers.map(|s| s.brightness_range).unwrap_or(1.0),
             safety_pattern_complexity: safety_multipliers.map(|s| s.pattern_complexity).unwrap_or(1.0),
             safety_emergency_stop: safety_multipliers.map(|s| if s.beat_intensity == 0.0 { 0.0 } else { 1.0 }).unwrap_or(1.0),
+
+            // Shader transition blending
+            transition_blend: transition_progress,
 
             // Keep default values for other parameters
             ..UniversalUniforms::default()
@@ -502,6 +516,17 @@ impl ShaderSystem {
         }
 
         self.transitioner.transition_to(shader_type);
+        self.rebuild_pipeline(device, config)?;
+        Ok(())
+    }
+
+    /// Set shader immediately without transition animation (for manual user input)
+    pub fn set_shader_immediately(&mut self, shader_type: ShaderType, device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Result<()> {
+        if !self.registry.is_available(shader_type) {
+            return Err(anyhow!("Shader type {:?} is not available", shader_type));
+        }
+
+        self.transitioner.switch_immediately_to(shader_type);
         self.rebuild_pipeline(device, config)?;
         Ok(())
     }
@@ -642,7 +667,8 @@ impl ShaderSystem {
 
         // Update uniforms
         if let Some(ref uniform_buffer) = self.uniform_buffer {
-            let uniforms = self.uniform_manager.map_audio_data(audio_features, rhythm_features, self.resolution, None);
+            let transition_progress = self.transitioner.transition_progress();
+            let uniforms = self.uniform_manager.map_audio_data(audio_features, rhythm_features, self.resolution, None, transition_progress);
             queue.write_buffer(uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
         }
 
@@ -701,7 +727,8 @@ impl ShaderSystem {
 
         // Update uniforms with performance parameters
         if let Some(ref uniform_buffer) = self.uniform_buffer {
-            let mut uniforms = self.uniform_manager.map_audio_data(audio_features, rhythm_features, self.resolution, safety_multipliers);
+            let transition_progress = self.transitioner.transition_progress();
+            let mut uniforms = self.uniform_manager.map_audio_data(audio_features, rhythm_features, self.resolution, safety_multipliers, transition_progress);
 
             // Apply quality scaling to audio parameters
             let quality_scale = quality.effect_intensity();
@@ -732,5 +759,440 @@ impl ShaderSystem {
 
     pub fn is_transitioning(&self) -> bool {
         self.transitioner.is_transitioning()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::{AudioFeatures, RhythmFeatures};
+    use crate::control::safety::SafetyMultipliers;
+
+    #[test]
+    fn test_uniform_manager_creation() {
+        let manager = UniformManager::new();
+        // Manager should be created successfully
+        assert!(manager.start_time.elapsed().as_secs_f32() >= 0.0);
+    }
+
+    #[test]
+    fn test_audio_data_mapping_basic() {
+        let manager = UniformManager::new();
+
+        let audio_features = AudioFeatures {
+            sub_bass: 0.1,
+            bass: 0.2,
+            mid: 0.3,
+            treble: 0.4,
+            presence: 0.5,
+            overall_volume: 0.6,
+            signal_level_db: -20.0,
+            peak_level_db: -10.0,
+            dynamic_range: 0.7,
+            spectral_centroid: 1000.0,
+            spectral_rolloff: 2000.0,
+            spectral_flux: 0.8,
+            pitch_confidence: 0.9,
+            zero_crossing_rate: 0.1,
+            onset_strength: 0.5,
+        };
+
+        let rhythm_features = RhythmFeatures {
+            beat_strength: 0.8,
+            estimated_bpm: 120.0,
+            tempo_bpm: 120.0,
+            tempo_confidence: 0.9,
+            onset_detected: true,
+            downbeat_detected: false,
+            rhythm_stability: 0.7,
+            beat_position: 0,
+        };
+
+        let resolution = (1920, 1080);
+
+        let uniforms = manager.map_audio_data(&audio_features, &rhythm_features, resolution, None, 1.0);
+
+        // Verify audio features are correctly mapped
+        assert_eq!(uniforms.sub_bass, 0.1);
+        assert_eq!(uniforms.bass, 0.2);
+        assert_eq!(uniforms.mid, 0.3);
+        assert_eq!(uniforms.treble, 0.4);
+        assert_eq!(uniforms.presence, 0.5);
+        assert_eq!(uniforms.overall_volume, 0.6);
+        assert_eq!(uniforms.signal_level_db, -20.0);
+        assert_eq!(uniforms.peak_level_db, -10.0);
+        assert_eq!(uniforms.dynamic_range, 0.7);
+
+        // Verify rhythm features are correctly mapped
+        assert_eq!(uniforms.beat_strength, 0.8);
+        assert_eq!(uniforms.estimated_bpm, 120.0);
+        assert_eq!(uniforms.tempo_confidence, 0.9);
+        assert_eq!(uniforms.onset_detected, 1.0); // true -> 1.0
+        assert_eq!(uniforms.downbeat_detected, 0.0); // false -> 0.0
+
+        // Verify spectral characteristics
+        assert_eq!(uniforms.spectral_centroid, 1000.0);
+        assert_eq!(uniforms.spectral_rolloff, 2000.0);
+        assert_eq!(uniforms.spectral_flux, 0.8);
+        assert_eq!(uniforms.pitch_confidence, 0.9);
+        assert_eq!(uniforms.zero_crossing_rate, 0.1);
+        assert_eq!(uniforms.onset_strength, 0.5);
+
+        // Verify resolution mapping
+        assert_eq!(uniforms.resolution_x, 1920.0);
+        assert_eq!(uniforms.resolution_y, 1080.0);
+
+        // Verify default safety values (no safety multipliers provided)
+        assert_eq!(uniforms.safety_beat_intensity, 1.0);
+        assert_eq!(uniforms.safety_onset_intensity, 1.0);
+        assert_eq!(uniforms.safety_color_change_rate, 1.0);
+        assert_eq!(uniforms.safety_brightness_range, 1.0);
+        assert_eq!(uniforms.safety_pattern_complexity, 1.0);
+        assert_eq!(uniforms.safety_emergency_stop, 1.0);
+
+        // Verify time is set
+        assert!(uniforms.time >= 0.0);
+    }
+
+    #[test]
+    fn test_safety_multipliers_integration() {
+        let manager = UniformManager::new();
+        let audio_features = AudioFeatures::new();
+        let rhythm_features = RhythmFeatures::new();
+        let resolution = (800, 600);
+
+        let safety_multipliers = SafetyMultipliers {
+            beat_intensity: 0.3,
+            onset_intensity: 0.2,
+            color_change_rate: 0.4,
+            brightness_range: 0.5,
+            pattern_complexity: 0.6,
+        };
+
+        let uniforms = manager.map_audio_data(&audio_features, &rhythm_features, resolution, Some(safety_multipliers), 1.0);
+
+        // Verify safety multipliers are correctly applied
+        assert_eq!(uniforms.safety_beat_intensity, 0.3);
+        assert_eq!(uniforms.safety_onset_intensity, 0.2);
+        assert_eq!(uniforms.safety_color_change_rate, 0.4);
+        assert_eq!(uniforms.safety_brightness_range, 0.5);
+        assert_eq!(uniforms.safety_pattern_complexity, 0.6);
+        assert_eq!(uniforms.safety_emergency_stop, 1.0); // beat_intensity > 0, so normal operation
+    }
+
+    #[test]
+    fn test_emergency_stop_detection() {
+        let manager = UniformManager::new();
+        let audio_features = AudioFeatures::new();
+        let rhythm_features = RhythmFeatures::new();
+        let resolution = (800, 600);
+
+        let emergency_safety = SafetyMultipliers {
+            beat_intensity: 0.0, // Emergency stop condition
+            onset_intensity: 0.0,
+            color_change_rate: 0.0,
+            brightness_range: 0.1,
+            pattern_complexity: 0.0,
+        };
+
+        let uniforms = manager.map_audio_data(&audio_features, &rhythm_features, resolution, Some(emergency_safety), 1.0);
+
+        // Verify emergency stop is detected
+        assert_eq!(uniforms.safety_emergency_stop, 0.0); // beat_intensity == 0.0 triggers emergency stop
+    }
+
+    #[test]
+    fn test_boolean_rhythm_conversion() {
+        let manager = UniformManager::new();
+        let audio_features = AudioFeatures::new();
+        let resolution = (1920, 1080);
+
+        // Test true values
+        let rhythm_true = RhythmFeatures {
+            onset_detected: true,
+            downbeat_detected: true,
+            ..RhythmFeatures::new()
+        };
+
+        let uniforms_true = manager.map_audio_data(&audio_features, &rhythm_true, resolution, None, 1.0);
+        assert_eq!(uniforms_true.onset_detected, 1.0);
+        assert_eq!(uniforms_true.downbeat_detected, 1.0);
+
+        // Test false values
+        let rhythm_false = RhythmFeatures {
+            onset_detected: false,
+            downbeat_detected: false,
+            ..RhythmFeatures::new()
+        };
+
+        let uniforms_false = manager.map_audio_data(&audio_features, &rhythm_false, resolution, None, 1.0);
+        assert_eq!(uniforms_false.onset_detected, 0.0);
+        assert_eq!(uniforms_false.downbeat_detected, 0.0);
+    }
+
+    #[test]
+    fn test_resolution_conversion() {
+        let manager = UniformManager::new();
+        let audio_features = AudioFeatures::new();
+        let rhythm_features = RhythmFeatures::new();
+
+        // Test different resolutions
+        let test_cases = [
+            (1920, 1080),
+            (1280, 720),
+            (800, 600),
+            (3840, 2160), // 4K
+        ];
+
+        for (width, height) in test_cases {
+            let uniforms = manager.map_audio_data(&audio_features, &rhythm_features, (width, height), None, 1.0);
+            assert_eq!(uniforms.resolution_x, width as f32);
+            assert_eq!(uniforms.resolution_y, height as f32);
+        }
+    }
+
+    #[test]
+    fn test_transition_blend_progress_mapping() {
+        let manager = UniformManager::new();
+        let audio_features = AudioFeatures::new();
+        let rhythm_features = RhythmFeatures::new();
+        let resolution = (1920, 1080);
+
+        // Test various transition progress values
+        let test_values = vec![0.0, 0.25, 0.5, 0.75, 1.0];
+
+        for progress in test_values {
+            let uniforms = manager.map_audio_data(&audio_features, &rhythm_features, resolution, None, progress);
+            assert_eq!(uniforms.transition_blend, progress);
+        }
+    }
+
+    // ===== SHADER SWITCHING VALIDATION TESTS =====
+
+    #[test]
+    fn test_shader_registry_completeness() {
+        let registry = ShaderRegistry::new();
+        let all_shader_types = ShaderType::all();
+
+        // Every shader type should be available in registry
+        for &shader_type in all_shader_types {
+            assert!(registry.is_available(shader_type), "Shader {:?} should be available", shader_type);
+            let metadata = registry.get(shader_type);
+            assert!(metadata.is_some(), "Shader {:?} should have metadata", shader_type);
+        }
+
+        // Available shaders should match all shader types
+        let available = registry.available_shaders();
+        assert_eq!(available.len(), all_shader_types.len());
+    }
+
+    #[test]
+    fn test_shader_transitioner_basic_operations() {
+        let mut transitioner = ShaderTransitioner::new(ShaderType::Classic);
+
+        // Initial state
+        assert_eq!(transitioner.current_shader(), ShaderType::Classic);
+        assert!(!transitioner.is_transitioning());
+
+        // Start transition
+        transitioner.transition_to(ShaderType::Plasma);
+        assert!(transitioner.is_transitioning());
+
+        // Complete transition (wait for real time to pass)
+        std::thread::sleep(std::time::Duration::from_millis(2100));
+        transitioner.update();
+        assert!(!transitioner.is_transitioning());
+        assert_eq!(transitioner.current_shader(), ShaderType::Plasma);
+    }
+
+    #[test]
+    fn test_shader_transition_progress() {
+        let mut transitioner = ShaderTransitioner::new(ShaderType::Classic);
+        transitioner.transition_to(ShaderType::Fractal);
+
+        // Transition should start at 0.0 and progress to 1.0
+        let initial_progress = transitioner.transition_progress();
+        assert_eq!(initial_progress, 0.0);
+
+        // After some time, progress should increase
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        transitioner.update();
+        let mid_progress = transitioner.transition_progress();
+        assert!(mid_progress > 0.0 && mid_progress < 1.0);
+
+        // Complete transition
+        std::thread::sleep(std::time::Duration::from_millis(1700));
+        transitioner.update();
+        assert!(!transitioner.is_transitioning());
+    }
+
+    #[test]
+    fn test_shader_type_properties() {
+        // Test all shader types have names and descriptions
+        for &shader_type in ShaderType::all() {
+            let name = shader_type.name();
+            let description = shader_type.description();
+
+            assert!(!name.is_empty(), "Shader {:?} should have a name", shader_type);
+            assert!(!description.is_empty(), "Shader {:?} should have a description", shader_type);
+        }
+    }
+
+    #[test]
+    fn test_shader_metadata_validation() {
+        let registry = ShaderRegistry::new();
+
+        for &shader_type in ShaderType::all() {
+            let metadata = registry.get(shader_type).unwrap();
+
+            // Validate metadata fields
+            assert_eq!(metadata.shader_type, shader_type);
+            assert!(!metadata.vertex_source.is_empty());
+            assert!(!metadata.fragment_source.is_empty());
+
+            // Fragment shader should contain the main function
+            assert!(metadata.fragment_source.contains("fs_main"));
+
+            // Should contain UniversalUniforms struct
+            assert!(metadata.fragment_source.contains("UniversalUniforms"));
+        }
+    }
+
+    #[test]
+    fn test_shader_switching_sequence() {
+        let mut transitioner = ShaderTransitioner::new(ShaderType::Classic);
+
+        let test_sequence = [
+            ShaderType::Classic,
+            ShaderType::Plasma,
+            ShaderType::Tunnel,
+            ShaderType::Particle,
+            ShaderType::Fractal,
+        ];
+
+        for &target_shader in &test_sequence {
+            transitioner.transition_to(target_shader);
+
+            // Complete transition
+            std::thread::sleep(std::time::Duration::from_millis(2100));
+            transitioner.update();
+
+            assert_eq!(transitioner.current_shader(), target_shader);
+            assert!(!transitioner.is_transitioning());
+        }
+    }
+
+    #[test]
+    fn test_audio_driven_shader_selection_logic() {
+        // Test the shader selection logic from enhanced_composer
+        fn analyze_audio_for_shader(audio: &AudioFeatures, rhythm: &RhythmFeatures) -> ShaderType {
+            // High bass content -> Classic or Tunnel
+            if audio.bass + audio.sub_bass > 0.7 {
+                return if rhythm.tempo_confidence > 0.8 {
+                    ShaderType::Tunnel
+                } else {
+                    ShaderType::Classic
+                };
+            }
+
+            // High treble + onset activity -> Particle system
+            if audio.treble + audio.presence > 0.6 && audio.onset_strength > 0.5 {
+                return ShaderType::Particle;
+            }
+
+            // High pitch confidence + harmony -> Kaleidoscope
+            if audio.pitch_confidence > 0.7 && rhythm.rhythm_stability > 0.6 {
+                return ShaderType::Kaleidoscope;
+            }
+
+            // High spectral flux -> Parametric wave
+            if audio.spectral_flux > 0.4 {
+                return ShaderType::ParametricWave;
+            }
+
+            // High dynamic range -> Fractal
+            if audio.dynamic_range > 0.6 {
+                return ShaderType::Fractal;
+            }
+
+            ShaderType::Classic
+        }
+
+        // Test bass-driven selections
+        let bass_audio = AudioFeatures {
+            bass: 0.8,
+            sub_bass: 0.3,
+            ..AudioFeatures::new()
+        };
+
+        let high_tempo_rhythm = RhythmFeatures {
+            tempo_confidence: 0.9,
+            ..RhythmFeatures::new()
+        };
+        assert_eq!(analyze_audio_for_shader(&bass_audio, &high_tempo_rhythm), ShaderType::Tunnel);
+
+        let low_tempo_rhythm = RhythmFeatures {
+            tempo_confidence: 0.5,
+            ..RhythmFeatures::new()
+        };
+        assert_eq!(analyze_audio_for_shader(&bass_audio, &low_tempo_rhythm), ShaderType::Classic);
+
+        // Test treble + onset -> Particle
+        let treble_audio = AudioFeatures {
+            treble: 0.7,
+            presence: 0.5,
+            onset_strength: 0.6,
+            ..AudioFeatures::new()
+        };
+        assert_eq!(analyze_audio_for_shader(&treble_audio, &RhythmFeatures::new()), ShaderType::Particle);
+
+        // Test harmonic content -> Kaleidoscope
+        let harmonic_audio = AudioFeatures {
+            pitch_confidence: 0.8,
+            ..AudioFeatures::new()
+        };
+        let stable_rhythm = RhythmFeatures {
+            rhythm_stability: 0.7,
+            ..RhythmFeatures::new()
+        };
+        assert_eq!(analyze_audio_for_shader(&harmonic_audio, &stable_rhythm), ShaderType::Kaleidoscope);
+
+        // Test spectral flux -> ParametricWave
+        let dynamic_audio = AudioFeatures {
+            spectral_flux: 0.5,
+            ..AudioFeatures::new()
+        };
+        assert_eq!(analyze_audio_for_shader(&dynamic_audio, &RhythmFeatures::new()), ShaderType::ParametricWave);
+
+        // Test dynamic range -> Fractal
+        let range_audio = AudioFeatures {
+            dynamic_range: 0.7,
+            ..AudioFeatures::new()
+        };
+        assert_eq!(analyze_audio_for_shader(&range_audio, &RhythmFeatures::new()), ShaderType::Fractal);
+
+        // Test default case
+        assert_eq!(analyze_audio_for_shader(&AudioFeatures::new(), &RhythmFeatures::new()), ShaderType::Classic);
+    }
+
+    #[test]
+    fn test_shader_transition_interruption() {
+        let mut transitioner = ShaderTransitioner::new(ShaderType::Classic);
+
+        // Start first transition
+        transitioner.transition_to(ShaderType::Plasma);
+        assert!(transitioner.is_transitioning());
+
+        // Interrupt with new transition
+        transitioner.transition_to(ShaderType::Tunnel);
+        assert!(transitioner.is_transitioning());
+
+        // Complete the interrupted transition
+        std::thread::sleep(std::time::Duration::from_millis(2100));
+        transitioner.update();
+
+        // Should end up at the final target
+        assert_eq!(transitioner.current_shader(), ShaderType::Tunnel);
+        assert!(!transitioner.is_transitioning());
     }
 }
