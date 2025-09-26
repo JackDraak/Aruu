@@ -411,6 +411,70 @@ mapper.configure_smoothing("color", SmoothingType::adaptive(0.1, 0.7, 3.0));
 - ✅ **User Experience**: Polished controls with comprehensive user documentation
 - ✅ **Performance Optimization**: Fine-tuned for optimal hardware utilization
 
+## Phase 6: Epilepsy Safety System (In Progress)
+
+### Safety Implementation Priority 🛡️
+Following comprehensive epilepsy prevention guidelines, Aruu now implements a multi-layered safety system to prevent photosensitive seizures while maintaining audio-reactive visual quality.
+
+#### Core Safety Standards ✅ (Implemented)
+Based on international standards (WCAG 2.0, ITU, ISO, Gaming Industry):
+- **Flash Rate Limiting**: ≤3 flashes per second (333ms minimum between major changes)
+- **Luminance Change Control**: ≤10% brightness change per visual update
+- **Red Flash Restriction**: Enhanced monitoring for red wavelengths (most dangerous)
+- **Screen Coverage Limits**: Flashing areas restricted to safe percentages
+- **Spatial Pattern Safety**: High-contrast repeating pattern avoidance
+
+#### SafetyEngine Architecture ✅ (Implemented)
+**Core Components:**
+- **FlashTracker**: Monitors visual change frequency with 3 Hz global limit
+- **LuminanceLimiter**: Controls brightness variations using ITU-R BT.709 standard
+- **SafetyMultipliers**: Audio-reactive effect dampening system
+- **EpilepsyWarning**: Mandatory startup consent with 5-second minimum display
+
+**Safety Levels:**
+- 🛡️ **Ultra Safe**: Maximum protection (beat: 0.1x, onset: 0.05x, brightness: 0.3x)
+- 🔒 **Safe**: Conservative default (beat: 0.3x, onset: 0.2x, brightness: 0.5x)
+- ⚠️ **Moderate**: Balanced experience (beat: 0.6x, onset: 0.4x, brightness: 0.7x)
+- 🎨 **Standard**: Near-full features (beat: 0.8x, onset: 0.6x, brightness: 0.9x)
+- ⚠️ **Disabled**: Medical/testing only (no restrictions)
+
+#### Risk Assessment and Mitigation ✅
+**Identified High-Risk Elements:**
+- **Spectralizer Shader**: Frequency bars potentially >3 Hz → Safety dampening implemented
+- **Particle Shader**: Rapid particle birth/death cycles → Birth rate limiting added
+- **Beat-driven Pulsing**: All shaders use `beat_strength` → Safe sinusoidal alternatives
+- **Onset Bursts**: `onset_strength` sudden flashes → Gradual intensity ramping
+- **Fractal Edge Enhancement**: High-contrast rapid changes → Smoothed transitions
+
+#### Implementation Status (Current Session)
+**Phase 6A: Core Safety Infrastructure ✅**
+- ✅ **SafetyEngine System**: Complete flash rate limiting and luminance control
+- ✅ **Warning Screen**: Mandatory 5-second epilepsy awareness with user consent
+- ✅ **Safety Architecture**: Integrated into control layer with comprehensive testing
+
+**Phase 6B: Shader Integration (Next Priority) 🔄**
+- 🔄 **Emergency Controls**: ESC key instant visual shutdown (partial implementation)
+- 🔄 **Safety Mode Integration**: Ultra-conservative visual preset
+- 🔄 **WGSL Shader Updates**: All 8 shaders respect safety uniform parameters
+- 🔄 **Audio-Visual Mapping**: Replace dangerous effects with safe alternatives
+
+**Phase 6C: User Interface Enhancement (Planned) 📋**
+- 📋 **Real-time Safety Monitoring**: Visual intensity indicators
+- 📋 **Safety Settings Menu**: Comprehensive user controls
+- 📋 **Performance Overlay Integration**: Safety status in existing overlay
+- 📋 **Break Reminders**: 30-minute automatic pause suggestions
+
+**Phase 6D: Compliance and Testing (Planned) 📋**
+- 📋 **PEAT Analysis**: Photosensitive Epilepsy Analysis Tool testing
+- 📋 **WCAG 2.0 Compliance**: Full accessibility standard verification
+- 📋 **Gaming Standards**: Xbox, PlayStation, Steam compliance testing
+- 📋 **Medical Consultation**: Professional epilepsy specialist review
+
+### Safety Philosophy
+**"Maximum Audio Response, Minimum Seizure Risk"**
+
+The goal is not to eliminate visual reactivity, but to make it safe and accessible to all users, including those with photosensitive epilepsy. This represents responsible development that prioritizes user safety while maintaining the immersive audio-visual experience that makes Aruu unique.
+
 ## Developer Information
 
 ### Architecture Overview
@@ -435,6 +499,8 @@ The Aruu system consists of three main layers:
 - **FeatureMapper**: Legacy parameter mapping with advanced smoothing
 - **PaletteManager**: Dynamic color palette management
 - **Smoother**: Advanced smoothing algorithms (Linear/Exponential/Adaptive)
+- **SafetyEngine**: Comprehensive epilepsy prevention system
+- **EpilepsyWarning**: Mandatory startup safety consent screen
 
 ### Extending the System
 
