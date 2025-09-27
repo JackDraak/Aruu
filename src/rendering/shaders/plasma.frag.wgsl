@@ -68,6 +68,24 @@ struct UniversalUniforms {
     safety_brightness_range: f32,
     safety_pattern_complexity: f32,
     safety_emergency_stop: f32,
+
+    // Overlay system uniforms
+    mouse_x: f32,
+    mouse_y: f32,
+    mouse_pressed: f32,
+    show_debug_overlay: f32,
+    show_control_panel: f32,
+    ui_volume: f32,
+    ui_is_playing: f32,
+    ui_safety_level: f32,
+    ui_quality_level: f32,
+    ui_auto_shader: f32,
+    ui_current_shader_index: f32,
+    ui_fps: f32,
+    ui_frame_time: f32,
+    screen_width: f32,
+    screen_height: f32,
+    text_scale: f32,
 }
 
 @group(0) @binding(0)

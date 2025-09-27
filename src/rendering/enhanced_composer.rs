@@ -4,7 +4,7 @@ use anyhow::Result;
 use std::time::{Duration, Instant};
 
 use crate::audio::{AudioFeatures, RhythmFeatures};
-use super::{WgpuContext, ShaderSystem, ShaderType, PerformanceManager, PerformanceMetrics, QualityLevel};
+use super::{WgpuContext, ShaderSystem, ShaderType, PerformanceManager, PerformanceMetrics, QualityLevel, OverlaySystem};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -39,18 +39,27 @@ const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
 /// Enhanced frame composer using the new shader system architecture
 pub struct EnhancedFrameComposer {
     shader_system: ShaderSystem,
+    overlay_system: OverlaySystem,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     performance_manager: PerformanceManager,
     frame_start_time: Option<Instant>,
     last_auto_shader_switch: Instant,
     auto_shader_cooldown: std::time::Duration,
+    // Overlay state
+    show_debug_overlay: bool,
+    show_control_panel: bool,
+    mouse_position: (f32, f32),
+    mouse_pressed: bool,
 }
 
 impl EnhancedFrameComposer {
     pub fn new(context: &WgpuContext) -> Result<Self> {
         // Initialize shader system
         let shader_system = ShaderSystem::new(&context.device, &context.config)?;
+
+        // Initialize overlay system
+        let overlay_system = OverlaySystem::new(context)?;
 
         // Create vertex buffer
         let vertex_buffer = context
@@ -72,12 +81,18 @@ impl EnhancedFrameComposer {
 
         Ok(Self {
             shader_system,
+            overlay_system,
             vertex_buffer,
             index_buffer,
             performance_manager: PerformanceManager::new(60.0), // Target 60 FPS
             frame_start_time: None,
             last_auto_shader_switch: Instant::now(),
             auto_shader_cooldown: std::time::Duration::from_millis(2500), // 2.5 seconds between switches
+            // Overlay state defaults
+            show_debug_overlay: true,  // Show debug overlay by default
+            show_control_panel: true,  // Show control panel by default
+            mouse_position: (0.0, 0.0),
+            mouse_pressed: false,
         })
     }
 
@@ -88,6 +103,7 @@ impl EnhancedFrameComposer {
         audio_features: &AudioFeatures,
         rhythm_features: &RhythmFeatures,
         safety_multipliers: Option<crate::control::safety::SafetyMultipliers>,
+        volume: f32,
     ) -> Result<()> {
         // Check for emergency stop - if active, render black screen instead of shaders
         if let Some(ref multipliers) = safety_multipliers {
@@ -124,6 +140,29 @@ impl EnhancedFrameComposer {
             current_quality,
             safety_multipliers,
         )?;
+
+        // Update overlay system state
+        self.overlay_system.update(
+            self.mouse_position,
+            self.mouse_pressed,
+            self.show_debug_overlay,
+            self.show_control_panel,
+        );
+
+        // Create overlay uniforms with current state
+        let overlay_uniforms = self.create_overlay_uniforms(
+            audio_features,
+            rhythm_features,
+            safety_multipliers.as_ref(),
+            &context,
+            volume,
+        );
+
+        // Render overlay shaders on top of main visualization
+        if let Err(e) = self.overlay_system.render(context, &view, &overlay_uniforms) {
+            eprintln!("Overlay rendering error: {}", e);
+            // Continue without overlays rather than crash
+        }
 
         output.present();
 
@@ -306,6 +345,156 @@ impl EnhancedFrameComposer {
 
         // Default fallback
         ShaderType::Classic
+    }
+
+    /// Create overlay uniforms with current state data
+    fn create_overlay_uniforms(
+        &self,
+        audio_features: &AudioFeatures,
+        rhythm_features: &RhythmFeatures,
+        safety_multipliers: Option<&crate::control::safety::SafetyMultipliers>,
+        context: &WgpuContext,
+        volume: f32,
+    ) -> super::UniversalUniforms {
+        use super::UniversalUniforms;
+
+        // Get current shader index for UI display
+        let current_shader_index = match self.current_shader() {
+            ShaderType::Classic => 0.0,
+            ShaderType::ParametricWave => 1.0,
+            ShaderType::Plasma => 2.0,
+            ShaderType::Kaleidoscope => 3.0,
+            ShaderType::Tunnel => 4.0,
+            ShaderType::Particle => 5.0,
+            ShaderType::Fractal => 6.0,
+            ShaderType::Spectralizer => 7.0,
+        };
+
+        // Calculate current FPS and performance metrics from performance manager
+        let current_fps = self.average_fps();
+        let frame_time = if current_fps > 0.0 { 1000.0 / current_fps } else { 16.67 };
+
+        // Get more detailed performance info
+        let quality_level = self.performance_manager.current_quality();
+        let quality_index = match quality_level {
+            QualityLevel::Potato => 0.0,
+            QualityLevel::Low => 1.0,
+            QualityLevel::Medium => 2.0,
+            QualityLevel::High => 3.0,
+            QualityLevel::Ultra => 4.0,
+        };
+
+        // Create uniforms with audio data and overlay-specific fields
+        UniversalUniforms {
+            // Copy all audio features
+            sub_bass: audio_features.sub_bass,
+            bass: audio_features.bass,
+            mid: audio_features.mid,
+            treble: audio_features.treble,
+            presence: audio_features.presence,
+            overall_volume: audio_features.overall_volume,
+            signal_level_db: audio_features.signal_level_db,
+            peak_level_db: audio_features.peak_level_db,
+            dynamic_range: audio_features.dynamic_range,
+
+            // Copy rhythm features
+            beat_strength: rhythm_features.beat_strength,
+            estimated_bpm: rhythm_features.estimated_bpm,
+            tempo_confidence: rhythm_features.tempo_confidence,
+            onset_detected: if rhythm_features.onset_detected { 1.0 } else { 0.0 },
+            downbeat_detected: if rhythm_features.downbeat_detected { 1.0 } else { 0.0 },
+
+            // Copy spectral features
+            spectral_centroid: audio_features.spectral_centroid,
+            spectral_rolloff: audio_features.spectral_rolloff,
+            spectral_flux: audio_features.spectral_flux,
+            pitch_confidence: audio_features.pitch_confidence,
+            zero_crossing_rate: audio_features.zero_crossing_rate,
+            onset_strength: audio_features.onset_strength,
+
+            // Set time
+            time: self.frame_start_time.map_or(0.0, |start| start.elapsed().as_secs_f32()),
+
+            // Set overlay-specific uniforms
+            mouse_x: self.mouse_position.0,
+            mouse_y: self.mouse_position.1,
+            mouse_pressed: if self.mouse_pressed { 1.0 } else { 0.0 },
+            show_debug_overlay: if self.show_debug_overlay { 1.0 } else { 0.0 },
+            show_control_panel: if self.show_control_panel { 1.0 } else { 0.0 },
+            ui_volume: volume, // Actual volume from audio processor
+            ui_is_playing: 1.0, // ASSUMPTION: Always playing for now
+            ui_safety_level: safety_multipliers.map_or(1.0, |s| {
+                // Convert safety multipliers to level (0-4 scale)
+                if s.beat_intensity <= 0.1 { 0.0 } // UltraSafe
+                else if s.beat_intensity <= 0.3 { 1.0 } // Safe
+                else if s.beat_intensity <= 0.5 { 2.0 } // Moderate
+                else if s.beat_intensity <= 0.8 { 3.0 } // Standard
+                else { 4.0 } // Disabled
+            }),
+            ui_quality_level: quality_index,
+            ui_auto_shader: 1.0, // ASSUMPTION: Auto-shader enabled by default
+            ui_current_shader_index: current_shader_index,
+            ui_fps: current_fps,
+            ui_frame_time: frame_time,
+            screen_width: context.config.width as f32,
+            screen_height: context.config.height as f32,
+            text_scale: 1.0,
+
+            // Set safety multipliers
+            safety_emergency_stop: safety_multipliers.map_or(1.0, |s| {
+                if s.beat_intensity == 0.0 && s.brightness_range <= 0.1 { 0.0 } else { 1.0 }
+            }),
+
+            // Use defaults for other fields
+            ..UniversalUniforms::default()
+        }
+    }
+
+    /// Update mouse position for overlay interaction
+    pub fn update_mouse_position(&mut self, x: f32, y: f32) {
+        self.mouse_position = (x, y);
+    }
+
+    /// Update mouse pressed state
+    pub fn update_mouse_pressed(&mut self, pressed: bool) {
+        self.mouse_pressed = pressed;
+    }
+
+    /// Toggle debug overlay visibility
+    pub fn toggle_debug_overlay(&mut self) {
+        self.show_debug_overlay = !self.show_debug_overlay;
+        println!("🔍 Debug overlay: {}", if self.show_debug_overlay { "ON" } else { "OFF" });
+    }
+
+    /// Toggle control panel visibility
+    pub fn toggle_control_panel(&mut self) {
+        self.show_control_panel = !self.show_control_panel;
+        println!("🎛️ Control panel: {}", if self.show_control_panel { "ON" } else { "OFF" });
+    }
+
+    /// Set debug overlay visibility
+    pub fn set_debug_overlay(&mut self, visible: bool) {
+        self.show_debug_overlay = visible;
+    }
+
+    /// Set control panel visibility
+    pub fn set_control_panel(&mut self, visible: bool) {
+        self.show_control_panel = visible;
+    }
+
+    /// Handle mouse click events and return overlay events
+    pub fn handle_mouse_click(&self, x: f32, y: f32) -> Vec<super::OverlayEvent> {
+        self.overlay_system.handle_mouse_click(x, y)
+    }
+
+    /// Check if overlay system is visible
+    pub fn has_visible_overlays(&self) -> bool {
+        self.show_debug_overlay || self.show_control_panel
+    }
+
+    /// Get current mouse position
+    pub fn get_mouse_position(&self) -> (f32, f32) {
+        self.mouse_position
     }
 }
 

@@ -72,6 +72,24 @@ pub struct UniversalUniforms {
     pub safety_brightness_range: f32,    // Multiplier for brightness range
     pub safety_pattern_complexity: f32,  // Multiplier for pattern complexity
     pub safety_emergency_stop: f32,      // 1.0 = normal, 0.0 = emergency stop
+
+    // Overlay system uniforms
+    pub mouse_x: f32,                     // Mouse X coordinate (0.0 to 1.0)
+    pub mouse_y: f32,                     // Mouse Y coordinate (0.0 to 1.0)
+    pub mouse_pressed: f32,               // 1.0 = pressed, 0.0 = not pressed
+    pub show_debug_overlay: f32,          // 1.0 = visible, 0.0 = hidden
+    pub show_control_panel: f32,          // 1.0 = visible, 0.0 = hidden
+    pub ui_volume: f32,                   // Current volume level (0.0 to 1.0)
+    pub ui_is_playing: f32,               // 1.0 = playing, 0.0 = paused
+    pub ui_safety_level: f32,             // Current safety level (0.0 to 4.0)
+    pub ui_quality_level: f32,            // Current quality level (0.0 to 4.0)
+    pub ui_auto_shader: f32,              // 1.0 = auto enabled, 0.0 = manual
+    pub ui_current_shader_index: f32,     // Index of current shader (0.0 to 7.0)
+    pub ui_fps: f32,                      // Current FPS for display
+    pub ui_frame_time: f32,               // Current frame time in ms
+    pub screen_width: f32,                // Screen width in pixels
+    pub screen_height: f32,               // Screen height in pixels
+    pub text_scale: f32,                  // Text scaling factor
 }
 
 impl Default for UniversalUniforms {
@@ -139,6 +157,24 @@ impl Default for UniversalUniforms {
             safety_brightness_range: 0.5,    // Limit brightness variations
             safety_pattern_complexity: 0.5,  // Simplify patterns
             safety_emergency_stop: 1.0,      // Normal operation
+
+            // Overlay system defaults
+            mouse_x: 0.0,
+            mouse_y: 0.0,
+            mouse_pressed: 0.0,
+            show_debug_overlay: 1.0,          // Debug overlay visible by default
+            show_control_panel: 1.0,          // Control panel visible by default
+            ui_volume: 0.7,                   // Default volume 70%
+            ui_is_playing: 0.0,               // Not playing by default
+            ui_safety_level: 1.0,             // Safe level by default
+            ui_quality_level: 1.0,            // High quality by default
+            ui_auto_shader: 1.0,              // Auto-shader enabled by default
+            ui_current_shader_index: 0.0,     // Classic shader by default
+            ui_fps: 60.0,                     // Target FPS
+            ui_frame_time: 16.67,             // Target frame time
+            screen_width: 1200.0,             // Default screen width
+            screen_height: 800.0,             // Default screen height
+            text_scale: 1.0,                  // Normal text scale
         }
     }
 }

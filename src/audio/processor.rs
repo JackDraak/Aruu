@@ -18,6 +18,7 @@ pub struct AudioProcessor {
     advanced_analyzer: AdvancedAudioAnalyzer,
     #[allow(dead_code)] // Used in tests
     sample_rate: f32,
+    volume: f32, // Volume level (0.0 to 1.0)
 }
 
 impl AudioProcessor {
@@ -46,6 +47,7 @@ impl AudioProcessor {
             fft_analyzer: FftAnalyzer::new(BUFFER_SIZE),
             advanced_analyzer: AdvancedAudioAnalyzer::new(sample_rate),
             sample_rate,
+            volume: 0.1, // Default volume at 10%
         })
     }
 
@@ -58,6 +60,7 @@ impl AudioProcessor {
             fft_analyzer: FftAnalyzer::new(BUFFER_SIZE),
             advanced_analyzer: AdvancedAudioAnalyzer::new(SAMPLE_RATE as f32),
             sample_rate: SAMPLE_RATE as f32,
+            volume: 0.1, // Default volume at 10%
         }
     }
 
@@ -153,6 +156,10 @@ impl AudioProcessor {
             let file = std::fs::File::open(file_path)?;
             let decoder = Decoder::new(file)?;
             sink.append(decoder);
+
+            // Apply current volume setting
+            sink.set_volume(self.volume);
+
             Ok(())
         } else {
             Err(anyhow!("No audio output available"))
@@ -173,6 +180,24 @@ impl AudioProcessor {
         if let Some(ref sink) = self.sink {
             sink.pause();
         }
+    }
+
+    /// Set volume level (0.0 = silent, 1.0 = full volume)
+    pub fn set_volume(&mut self, volume: f32) {
+        // Clamp volume to valid range
+        self.volume = volume.clamp(0.0, 1.0);
+
+        // Apply volume to sink if available
+        if let Some(ref sink) = self.sink {
+            sink.set_volume(self.volume);
+        }
+
+        println!("🔊 Volume set to: {:.0}%", self.volume * 100.0);
+    }
+
+    /// Get current volume level
+    pub fn get_volume(&self) -> f32 {
+        self.volume
     }
 
     pub fn resume(&self) {

@@ -206,6 +206,18 @@ impl UserInterface {
                     handled = true;
                 }
 
+                // Toggle debug overlay (D key)
+                KeyCode::KeyD => {
+                    composer.toggle_debug_overlay();
+                    handled = true;
+                }
+
+                // Toggle control panel (C key)
+                KeyCode::KeyC => {
+                    composer.toggle_control_panel();
+                    handled = true;
+                }
+
                 _ => {}
             }
         }

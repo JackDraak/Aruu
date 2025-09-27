@@ -63,41 +63,72 @@ impl AudioVisualizer {
                 Event::WindowEvent {
                     ref event,
                     window_id,
-                } if window_id == self.wgpu_context.window.id() => match event {
-                    WindowEvent::CloseRequested => {
-                        println!("👋 Closing Aruu Audio Visualizer");
-                        elwt.exit();
-                    }
-                    WindowEvent::Resized(physical_size) => {
-                        self.wgpu_context.resize(*physical_size);
-                    }
-                    WindowEvent::RedrawRequested => {
-                        let now = Instant::now();
-                        if now.duration_since(last_render_time) >= frame_duration {
-                            match self.render_frame() {
-                                Ok(_) => last_render_time = now,
-                                Err(e) => eprintln!("Render error: {}", e),
+                } if window_id == self.wgpu_context.window.id() => {
+                    match event {
+                            WindowEvent::CloseRequested => {
+                                println!("👋 Closing Aruu Audio Visualizer");
+                                elwt.exit();
                             }
-                        }
-                    }
-                    WindowEvent::KeyboardInput { event, .. } => {
-                        match self.user_interface.handle_keyboard_input(event, &mut self.frame_composer, &self.wgpu_context) {
-                            Ok(handled) => {
-                                if handled {
-                                    // Display updated status
-                                    println!("{}", self.user_interface.get_status_text(&self.frame_composer));
+                            WindowEvent::Resized(physical_size) => {
+                                self.wgpu_context.resize(*physical_size);
+                            }
+                            WindowEvent::RedrawRequested => {
+                                let now = Instant::now();
+                                if now.duration_since(last_render_time) >= frame_duration {
+                                    match self.render_frame() {
+                                        Ok(_) => last_render_time = now,
+                                        Err(e) => eprintln!("Render error: {}", e),
+                                    }
                                 }
+                            }
+                            WindowEvent::KeyboardInput { event, .. } => {
+                                match self.user_interface.handle_keyboard_input(event, &mut self.frame_composer, &self.wgpu_context) {
+                                    Ok(handled) => {
+                                        if handled {
+                                            // Display updated status
+                                            println!("{}", self.user_interface.get_status_text(&self.frame_composer));
+                                        }
 
-                                // Check for exit condition (double ESC press)
-                                if self.user_interface.should_exit() {
-                                    println!("👋 Closing Aruu Audio Visualizer");
-                                    elwt.exit();
+                                        // Check for exit condition (double ESC press)
+                                        if self.user_interface.should_exit() {
+                                            println!("👋 Closing Aruu Audio Visualizer");
+                                            elwt.exit();
+                                        }
+                                    }
+                                    Err(e) => eprintln!("Keyboard input error: {}", e),
                                 }
                             }
-                            Err(e) => eprintln!("Keyboard input error: {}", e),
+                            WindowEvent::CursorMoved { position, .. } => {
+                                // Convert physical position to normalized coordinates (0.0 to 1.0)
+                                let window_size = self.wgpu_context.window.inner_size();
+                                let normalized_x = position.x as f32 / window_size.width as f32;
+                                let normalized_y = position.y as f32 / window_size.height as f32;
+
+                                // Update frame composer with mouse position
+                                self.frame_composer.update_mouse_position(normalized_x, normalized_y);
+                            }
+                            WindowEvent::MouseInput { state, button, .. } => {
+                                if *button == winit::event::MouseButton::Left {
+                                    let pressed = *state == winit::event::ElementState::Pressed;
+                                    self.frame_composer.update_mouse_pressed(pressed);
+
+                                    if pressed {
+                                        // Handle mouse click for overlay interactions
+                                        let mouse_pos = self.frame_composer.get_mouse_position();
+                                        let overlay_events = self.frame_composer.handle_mouse_click(mouse_pos.0, mouse_pos.1);
+
+                                        // Process overlay events
+                                        for event in overlay_events {
+                                            match self.handle_overlay_event(event) {
+                                                Ok(_) => {},
+                                                Err(e) => eprintln!("Overlay event error: {}", e),
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
-                    }
-                    _ => {}
                 }
                 Event::AboutToWait => {
                     self.wgpu_context.window.request_redraw();
@@ -110,6 +141,8 @@ impl AudioVisualizer {
     }
 
     fn render_frame(&mut self) -> Result<()> {
+        let frame_start = Instant::now();
+
         // Process audio with enhanced features (includes AdvancedAudioAnalyzer internally)
         let audio_features = self.audio_processor.process_frame()?;
 
@@ -123,6 +156,7 @@ impl AudioVisualizer {
         // Enhanced rhythm analysis
         let rhythm_features = self.rhythm_detector.process_frame(&frequency_bins);
 
+
         // Auto-select shader based on audio characteristics if enabled
         if self.user_interface.is_auto_shader_enabled() {
             self.frame_composer.auto_select_shader(&self.wgpu_context, &audio_features, &rhythm_features)?;
@@ -130,9 +164,10 @@ impl AudioVisualizer {
 
         // Render with enhanced composer and safety multipliers
         let safety_multipliers = self.user_interface.get_safety_multipliers();
-        self.frame_composer.render(&self.wgpu_context, &audio_features, &rhythm_features, Some(safety_multipliers))?;
+        let volume = self.audio_processor.get_volume();
+        self.frame_composer.render(&self.wgpu_context, &audio_features, &rhythm_features, Some(safety_multipliers), volume)?;
 
-        // Display performance overlay if enabled
+        // Display performance overlay if enabled (console output)
         if let Some(performance_text) = self.user_interface.get_performance_overlay(&self.frame_composer) {
             static mut FRAME_COUNTER: u32 = 0;
             unsafe {
@@ -149,6 +184,58 @@ impl AudioVisualizer {
 
     pub fn load_audio_file(&mut self, file_path: &str) -> Result<()> {
         self.audio_processor.play_from_file(file_path)
+    }
+
+    /// Handle overlay events from the GUI system
+    fn handle_overlay_event(&mut self, event: crate::rendering::OverlayEvent) -> Result<()> {
+        use crate::rendering::OverlayEvent;
+
+        match event {
+            OverlayEvent::VolumeChanged(volume) => {
+                // Set volume in audio processor
+                self.audio_processor.set_volume(volume);
+                Ok(())
+            }
+            OverlayEvent::OpenFile => {
+                println!("📁 Open file requested");
+                // Try to load a sample file for demonstration
+                if let Err(e) = self.load_audio_file("sample_gentle.wav") {
+                    // If sample doesn't exist, just acknowledge the request
+                    println!("💡 No sample file found, continuing with microphone input");
+                } else {
+                    println!("✅ Loaded sample_gentle.wav");
+                }
+                Ok(())
+            }
+            OverlayEvent::PreviousTrack => {
+                println!("⏮️ Previous shader (simulating previous track)");
+                // Use shader cycling as track navigation simulation
+                if let Err(e) = self.frame_composer.next_shader(&self.wgpu_context) {
+                    eprintln!("Error switching shader: {}", e);
+                }
+                Ok(())
+            }
+            OverlayEvent::NextTrack => {
+                println!("⏭️ Next shader (simulating next track)");
+                // Use shader cycling as track navigation simulation
+                if let Err(e) = self.frame_composer.next_shader(&self.wgpu_context) {
+                    eprintln!("Error switching shader: {}", e);
+                }
+                Ok(())
+            }
+            OverlayEvent::ToggleSafety => {
+                println!("🛡️ Cycling safety level");
+                self.user_interface.cycle_safety_level();
+                println!("{}", self.user_interface.get_status_text(&self.frame_composer));
+                Ok(())
+            }
+            OverlayEvent::EmergencyStop => {
+                println!("🚨 Emergency stop activated!");
+                self.user_interface.emergency_stop();
+                println!("{}", self.user_interface.get_status_text(&self.frame_composer));
+                Ok(())
+            }
+        }
     }
 }
 
