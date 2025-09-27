@@ -18,8 +18,9 @@ Enhanced Audio Processing Layer
 Multi-Shader Rendering Layer
 ├── WGPU Context Manager ✅
 ├── Shader System (hot-swappable 8 shaders) ✅
-├── Uniform Manager (40+ parameter unified buffer) ✅
+├── Uniform Manager (60+ parameter unified buffer) ✅
 ├── Enhanced Frame Composer ✅
+├── Shader-Based Overlay System ✅
 └── Performance Scaling System (5 quality levels) ✅
 
 Intelligent Control Layer
@@ -28,6 +29,7 @@ Intelligent Control Layer
 ├── Effect Controller (weight blending) ✅
 ├── Shader Transitioner ✅
 ├── User Interface Controller ✅
+├── Interactive Overlay Controls ✅
 └── Safety Engine (epilepsy prevention) ✅
 ```
 
@@ -39,6 +41,8 @@ Intelligent Control Layer
 - **Safety Engine**: Epilepsy prevention controls and emergency stop
 - **User Controls**: Keyboard interface for shader switching and settings
 - **Performance Management**: 5 quality levels for different hardware
+- **Shader-Based Overlay System**: Professional GUI with debug and control panels
+- **Volume Control**: Real-time audio volume adjustment with visual feedback
 
 ### Current Testing Phase 🔄
 **Unit Test Validation**
@@ -91,6 +95,8 @@ cargo test --lib
 ```
 
 ### Controls
+
+#### Keyboard Controls
 - **1-8**: Direct shader selection
 - **Space**: Cycle shaders
 - **A**: Toggle auto-shader selection
@@ -99,7 +105,16 @@ cargo test --lib
 - **ESC**: Emergency stop
 - **X**: Resume from emergency stop
 - **P**: Toggle performance overlay
+- **D**: Toggle debug overlay
+- **C**: Toggle control panel
 - **H**: Help
+
+#### Mouse Controls
+- **Click Volume Slider**: Adjust audio volume (0-100%)
+- **Click File Button**: Load sample audio files
+- **Click Next/Previous**: Navigate through shaders (simulating tracks)
+- **Click Safety Button**: Cycle through safety levels
+- **Click Emergency Stop**: Activate emergency safety stop
 
 ## Safety Philosophy
 **"Maximum Audio Response, Minimum Seizure Risk"**
@@ -134,24 +149,32 @@ The goal is to maintain immersive audio-reactive visuals while ensuring safety f
 - 8 different shader effects (Classic, ParametricWave, Plasma, Kaleidoscope, Tunnel, Particle, Fractal, Spectralizer)
 - Safety controls including emergency stop (ESC key)
 - Performance scaling (5 quality levels)
-- Basic keyboard controls for shader switching
+- Comprehensive keyboard and mouse controls
+- **Professional Shader-Based Overlay System**:
+  - Debug overlay with real-time performance metrics (FPS, frame time, audio frequencies, BPM)
+  - Interactive control panel with volume slider, file controls, safety management
+  - Clear visual indicators and color-coded status displays
+  - Mouse interaction with click detection and event handling
+- **Full Volume Control**: Real-time audio volume adjustment with rodio integration
 
 ### Known Limitations
-- No comprehensive UI for safety settings
-- Limited file format support
-- Performance not optimized for all hardware
+- Limited file format support (basic WAV/M4A support)
+- Performance optimization for ultra-low-end hardware still pending
 
 ## Developer Information
 
 ### Architecture Layers
-- **Audio Processing**: Real-time analysis with 15+ parameters
-- **Rendering**: 8-shader system with performance scaling
-- **Control**: Safety-integrated user interface and controls
+- **Audio Processing**: Real-time analysis with 15+ parameters, volume control integration
+- **Rendering**: 8-shader system with performance scaling and shader-based overlay system
+- **Control**: Safety-integrated user interface with keyboard and mouse interactions
+- **Overlay System**: Multi-pass shader rendering with debug and control panels
 
 ### Extension Points
-- **New Shaders**: Add to `ShaderType` enum, implement WGSL with `UniversalUniforms`
+- **New Shaders**: Add to `ShaderType` enum, implement WGSL with `UniversalUniforms` (60+ fields)
 - **Audio Features**: Extend `AudioFeatures` struct, integrate with `AdvancedAudioAnalyzer`
 - **Safety Features**: Modify `SafetyEngine` multipliers, update shader implementations
+- **Overlay Features**: Extend `OverlayEvent` enum, add new interactive elements in overlay shaders
+- **UI Controls**: Add new mouse/keyboard handlers, extend overlay system capabilities
 
 ## Testing Status
 
